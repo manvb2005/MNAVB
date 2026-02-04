@@ -1,0 +1,22 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Regla por defecto: denegar todo
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Reglas para colección Users (toda la información del usuario)
+    match /Users/{userId} {
+      // Permitir lectura/escritura solo al usuario propietario
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Todas las subcolecciones del usuario (Bancos, Gastos, Ingresos, Transferencias, Prestamos, parametros, etc)
+      match /{subcollection}/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+  }
+}
