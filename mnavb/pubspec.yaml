@@ -46,6 +46,9 @@ dependencies:
   # Notificaciones locales
   flutter_local_notifications: ^18.0.1
   
+  # WorkManager para procesamiento en segundo plano
+  workmanager: ^0.6.0
+  
   # Para recibir imágenes compartidas desde otras apps
   receive_sharing_intent: ^1.8.0
   

@@ -418,4 +418,146 @@ class FirebaseService {
   Future<void> logout() async {
     await _auth.signOut();
   }
+
+  // ===================== MÉTODOS PARA BACKGROUND (con userId explícito) =====================
+  
+  /// Obtiene la lista de bancos del usuario (no stream)
+  Future<List<Map<String, dynamic>>> getBancosListConUserId(String userId) async {
+    final snapshot = await _db
+        .collection('Users')
+        .doc(userId)
+        .collection('Bancos')
+        .get();
+    
+    return snapshot.docs
+        .map((doc) => {'id': doc.id, ...doc.data()})
+        .toList();
+  }
+
+  /// Agrega un banco con userId explícito (para background)
+  Future<String> agregarBancoConUserId({
+    required String userId,
+    required String nombre,
+    required String logo,
+    required String tipoCuenta,
+    String? alias,
+    required double saldo,
+  }) async {
+    final docRef = await _db
+        .collection('Users')
+        .doc(userId)
+        .collection('Bancos')
+        .add({
+      'nombre': nombre,
+      'logo': logo,
+      'tipoCuenta': tipoCuenta,
+      'alias': alias,
+      'saldo': saldo,
+      'fechaCreacion': FieldValue.serverTimestamp(),
+    });
+    
+    return docRef.id;
+  }
+
+  /// Registra un ingreso con userId explícito (para background)
+  Future<void> registrarIngresoConUserId({
+    required String userId,
+    required String bancoId,
+    required String bancoNombre,
+    required String bancoLogo,
+    required String tipoCuenta,
+    required String categoria,
+    String? descripcion,
+    required double monto,
+    required DateTime fecha,
+  }) async {
+    if (monto <= 0) throw Exception('El monto debe ser mayor a cero');
+
+    await _db
+        .collection('Users')
+        .doc(userId)
+        .collection('Ingresos')
+        .add({
+      'bancoId': bancoId,
+      'bancoNombre': bancoNombre,
+      'bancoLogo': bancoLogo,
+      'tipoCuenta': tipoCuenta,
+      'categoria': categoria,
+      'descripcion': descripcion,
+      'monto': monto,
+      'fecha': Timestamp.fromDate(fecha),
+      'fechaCreacion': FieldValue.serverTimestamp(),
+    });
+
+    // Actualizar saldo del banco
+    await _actualizarSaldoBancoConUserId(userId, bancoId, monto, sumar: true);
+  }
+
+  /// Registra un gasto con userId explícito (para background)
+  Future<void> registrarGastoConUserId({
+    required String userId,
+    required String bancoId,
+    required String bancoNombre,
+    required String bancoLogo,
+    required String tipoCuenta,
+    required String categoria,
+    String? descripcion,
+    required double monto,
+    required DateTime fecha,
+  }) async {
+    if (monto <= 0) throw Exception('El monto debe ser mayor a cero');
+
+    // Verificar saldo suficiente
+    final bancoDoc = await _db
+        .collection('Users')
+        .doc(userId)
+        .collection('Bancos')
+        .doc(bancoId)
+        .get();
+
+    if (!bancoDoc.exists) throw Exception('Banco no encontrado');
+
+    final saldoActual = (bancoDoc.data()?['saldo'] as num?)?.toDouble() ?? 0.0;
+    if (saldoActual < monto) {
+      // En background, permitimos gastos aunque no haya saldo suficiente
+      // (podrías dejarlo en negativo o simplemente permitirlo)
+      print('⚠️ Advertencia: Saldo insuficiente. Saldo actual: S/ ${saldoActual.toStringAsFixed(2)}');
+    }
+
+    await _db
+        .collection('Users')
+        .doc(userId)
+        .collection('Gastos')
+        .add({
+      'bancoId': bancoId,
+      'bancoNombre': bancoNombre,
+      'bancoLogo': bancoLogo,
+      'tipoCuenta': tipoCuenta,
+      'categoria': categoria,
+      'descripcion': descripcion,
+      'monto': monto,
+      'fecha': Timestamp.fromDate(fecha),
+      'fechaCreacion': FieldValue.serverTimestamp(),
+    });
+
+    // Actualizar saldo del banco
+    await _actualizarSaldoBancoConUserId(userId, bancoId, monto, sumar: false);
+  }
+
+  /// Actualiza el saldo de un banco con userId explícito
+  Future<void> _actualizarSaldoBancoConUserId(
+    String userId,
+    String bancoId,
+    double monto,
+    {required bool sumar}
+  ) async {
+    await _db
+        .collection('Users')
+        .doc(userId)
+        .collection('Bancos')
+        .doc(bancoId)
+        .update({
+      'saldo': FieldValue.increment(sumar ? monto : -monto),
+    });
+  }
 }

@@ -41,6 +41,13 @@ class RememberSessionProvider extends ChangeNotifier {
     }
   }
 
+  /// Guarda el UID del usuario para procesamiento en background
+  Future<void> saveUserId(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('saved_uid', uid);
+    print('✅ UID guardado para background: $uid');
+  }
+
   Future<void> _loadSession() async {
     final prefs = await SharedPreferences.getInstance();
     _remember = prefs.getBool('remember') ?? false;

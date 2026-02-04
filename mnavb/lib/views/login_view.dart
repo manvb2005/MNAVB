@@ -5,6 +5,8 @@ import '../viewmodels/remember_session_provider.dart';
 import '../viewmodels/login_viewmodel.dart';
 import '../utils/auth_background.dart';
 import '../widgets/loader_overlay.dart';
+import '../services/firebase_service.dart';
+import '../utils/notification_permission_helper.dart';
 
 // ...existing code...
 
@@ -154,12 +156,28 @@ class _LoginViewState extends State<LoginView> {
                                                       );
                                                       if (!mounted) return;
                                                       if (ok) {
+                                                        // Guardar credenciales si está activado "Recordar sesión"
                                                         if (remember.remember) {
                                                           await remember.saveCredentials("${emailCtrl.text.trim()}@gmail.com", passCtrl.text);
                                                         } else {
                                                           remember.setRemember(false);
                                                         }
-                                                        Navigator.pushReplacementNamed(context, '/home');
+                                                        
+                                                        // IMPORTANTE: Guardar UID para procesamiento en background
+                                                        final firebaseService = FirebaseService();
+                                                        final userId = firebaseService.currentUserId;
+                                                        if (userId != null) {
+                                                          await remember.saveUserId(userId);
+                                                        }
+                                                        
+                                                        // Solicitar permiso de notificaciones (importante para background)
+                                                        if (mounted) {
+                                                          await NotificationPermissionHelper.requestNotificationPermission(context);
+                                                        }
+                                                        
+                                                        if (mounted) {
+                                                          Navigator.pushReplacementNamed(context, '/home');
+                                                        }
                                                       } else if (loginVM.errorMessage != null) {
                                                         ScaffoldMessenger.of(context).showSnackBar(
                                                           SnackBar(content: Text(loginVM.errorMessage!), behavior: SnackBarBehavior.floating),
