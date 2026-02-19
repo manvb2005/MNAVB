@@ -1,8 +1,9 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'bancos_view.dart';
+import 'kpi_history_view.dart';
 import '../services/firebase_service.dart';
 
 enum SummaryRange { today, week, month, year }
@@ -34,19 +35,19 @@ class _HomeViewState extends State<HomeView> {
         final start = DateTime(now.year, now.month, now.day, 0, 0, 0);
         final end = DateTime(now.year, now.month, now.day, 23, 59, 59);
         return (start, end);
-      
+
       case SummaryRange.week:
         // Última semana (7 días incluyendo hoy)
         final start = DateTime(now.year, now.month, now.day - 6, 0, 0, 0);
         final end = DateTime(now.year, now.month, now.day, 23, 59, 59);
         return (start, end);
-      
+
       case SummaryRange.month:
         // Mes actual
         final start = DateTime(now.year, now.month, 1, 0, 0, 0);
         final end = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
         return (start, end);
-      
+
       case SummaryRange.year:
         // Año actual
         final start = DateTime(now.year, 1, 1, 0, 0, 0);
@@ -77,12 +78,16 @@ class _HomeViewState extends State<HomeView> {
 
   String get _statsRangeLabel {
     if (_fromDate == null && _toDate == null) return 'Rango: —';
-    if (_fromDate != null && _toDate == null) return 'Desde: ${_fmtDate(_fromDate!)}';
-    if (_fromDate == null && _toDate != null) return 'Hasta: ${_fmtDate(_toDate!)}';
+    if (_fromDate != null && _toDate == null)
+      return 'Desde: ${_fmtDate(_fromDate!)}';
+    if (_fromDate == null && _toDate != null)
+      return 'Hasta: ${_fmtDate(_toDate!)}';
     return '${_fmtDate(_fromDate!)}  →  ${_fmtDate(_toDate!)}';
   }
 
-  Future<(DateTime?, DateTime?)?> _openStatsCalendarPopup(BuildContext context) async {
+  Future<(DateTime?, DateTime?)?> _openStatsCalendarPopup(
+    BuildContext context,
+  ) async {
     DateTime? tempFrom = _fromDate;
     DateTime? tempTo = _toDate;
 
@@ -91,7 +96,9 @@ class _HomeViewState extends State<HomeView> {
 
     // Fondos sólidos para el popup
     final card = isDark ? const Color(0xFF1C1D22) : Colors.white;
-    final stroke = isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08);
+    final stroke = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : Colors.black.withValues(alpha: 0.08);
 
     return showDialog<(DateTime?, DateTime?)>(
       context: context,
@@ -114,10 +121,12 @@ class _HomeViewState extends State<HomeView> {
                       border: Border.all(color: stroke),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.40 : 0.18),
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.40 : 0.18,
+                          ),
                           blurRadius: 22,
                           offset: const Offset(0, 12),
-                        )
+                        ),
                       ],
                     ),
                     child: Padding(
@@ -130,13 +139,15 @@ class _HomeViewState extends State<HomeView> {
                         isDark: isDark,
                         from: tempFrom,
                         to: tempTo,
-                        onFromChanged: (d) => setDialogState(() => tempFrom = d),
+                        onFromChanged: (d) =>
+                            setDialogState(() => tempFrom = d),
                         onToChanged: (d) => setDialogState(() => tempTo = d),
                         onClear: () => setDialogState(() {
                           tempFrom = null;
                           tempTo = null;
                         }),
-                        onClose: () => Navigator.pop(context, (tempFrom, tempTo)),
+                        onClose: () =>
+                            Navigator.pop(context, (tempFrom, tempTo)),
                       ),
                     ),
                   ),
@@ -158,9 +169,15 @@ class _HomeViewState extends State<HomeView> {
     // Tokens estilo "soft UI" (blanco/negro + grises)
     final surface = isDark ? const Color(0xFF0E0F12) : const Color(0xFFF7F7F9);
     final card = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white;
-    final stroke = isDark ? Colors.white.withValues(alpha: 0.10) : Colors.black.withValues(alpha: 0.06);
-    final soft = isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03);
-    final muted = isDark ? Colors.white.withValues(alpha: 0.65) : Colors.black.withValues(alpha: 0.55);
+    final stroke = isDark
+        ? Colors.white.withValues(alpha: 0.10)
+        : Colors.black.withValues(alpha: 0.06);
+    final soft = isDark
+        ? Colors.white.withValues(alpha: 0.04)
+        : Colors.black.withValues(alpha: 0.03);
+    final muted = isDark
+        ? Colors.white.withValues(alpha: 0.65)
+        : Colors.black.withValues(alpha: 0.55);
 
     // Obtener el rango de fechas según el filtro seleccionado
     final dateRange = _getDateRangeForSummary();
@@ -183,14 +200,18 @@ class _HomeViewState extends State<HomeView> {
                 if (mounted) {
                   setState(() {
                     _selectedBankIndex = 0;
-                    _selectedBankId = bancos.isNotEmpty ? bancos[0]['id'] : null;
+                    _selectedBankId = bancos.isNotEmpty
+                        ? bancos[0]['id']
+                        : null;
                   });
                 }
               });
             }
 
             // Actualizar el ID del banco seleccionado
-            if (bancos.isNotEmpty && (_selectedBankId == null || _selectedBankIndex < bancos.length)) {
+            if (bancos.isNotEmpty &&
+                (_selectedBankId == null ||
+                    _selectedBankIndex < bancos.length)) {
               _selectedBankId = bancos[_selectedBankIndex]['id'];
             }
 
@@ -216,7 +237,9 @@ class _HomeViewState extends State<HomeView> {
                                   padding: const EdgeInsets.all(16),
                                   child: Text(
                                     'Error al cargar los datos',
-                                    style: theme.textTheme.bodyLarge?.copyWith(color: muted),
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                      color: muted,
+                                    ),
                                   ),
                                 ),
                               );
@@ -225,38 +248,74 @@ class _HomeViewState extends State<HomeView> {
                             // Calcular KPIs
                             final ingresos = ingresosSnapshot.data ?? [];
                             final gastos = gastosSnapshot.data ?? [];
-                            final transferencias = transferenciasSnapshot.data ?? [];
+                            final transferencias =
+                                transferenciasSnapshot.data ?? [];
                             final prestamos = prestamosSnapshot.data ?? [];
 
                             // Saldo total: suma de todos los bancos (NO cambia con el filtro)
                             final saldoTotal = bancos.fold<double>(
                               0.0,
-                              (sum, banco) => sum + (banco['saldo'] as num).toDouble(),
+                              (sum, banco) =>
+                                  sum + (banco['saldo'] as num).toDouble(),
                             );
 
                             // Filtrar por rango de fechas
                             final ingresosEnRango = ingresos.where((i) {
                               final fecha = (i['fecha'] as Timestamp).toDate();
-                              return fecha.isAfter(dateRange.$1.subtract(const Duration(seconds: 1))) &&
-                                  fecha.isBefore(dateRange.$2.add(const Duration(seconds: 1)));
+                              return fecha.isAfter(
+                                    dateRange.$1.subtract(
+                                      const Duration(seconds: 1),
+                                    ),
+                                  ) &&
+                                  fecha.isBefore(
+                                    dateRange.$2.add(
+                                      const Duration(seconds: 1),
+                                    ),
+                                  );
                             }).toList();
 
                             final gastosEnRango = gastos.where((g) {
                               final fecha = (g['fecha'] as Timestamp).toDate();
-                              return fecha.isAfter(dateRange.$1.subtract(const Duration(seconds: 1))) &&
-                                  fecha.isBefore(dateRange.$2.add(const Duration(seconds: 1)));
+                              return fecha.isAfter(
+                                    dateRange.$1.subtract(
+                                      const Duration(seconds: 1),
+                                    ),
+                                  ) &&
+                                  fecha.isBefore(
+                                    dateRange.$2.add(
+                                      const Duration(seconds: 1),
+                                    ),
+                                  );
                             }).toList();
 
-                            final transferenciasEnRango = transferencias.where((t) {
+                            final transferenciasEnRango = transferencias.where((
+                              t,
+                            ) {
                               final fecha = (t['fecha'] as Timestamp).toDate();
-                              return fecha.isAfter(dateRange.$1.subtract(const Duration(seconds: 1))) &&
-                                  fecha.isBefore(dateRange.$2.add(const Duration(seconds: 1)));
+                              return fecha.isAfter(
+                                    dateRange.$1.subtract(
+                                      const Duration(seconds: 1),
+                                    ),
+                                  ) &&
+                                  fecha.isBefore(
+                                    dateRange.$2.add(
+                                      const Duration(seconds: 1),
+                                    ),
+                                  );
                             }).toList();
 
                             final prestamosEnRango = prestamos.where((p) {
                               final fecha = (p['fecha'] as Timestamp).toDate();
-                              return fecha.isAfter(dateRange.$1.subtract(const Duration(seconds: 1))) &&
-                                  fecha.isBefore(dateRange.$2.add(const Duration(seconds: 1)));
+                              return fecha.isAfter(
+                                    dateRange.$1.subtract(
+                                      const Duration(seconds: 1),
+                                    ),
+                                  ) &&
+                                  fecha.isBefore(
+                                    dateRange.$2.add(
+                                      const Duration(seconds: 1),
+                                    ),
+                                  );
                             }).toList();
 
                             // Sumar totales
@@ -270,15 +329,19 @@ class _HomeViewState extends State<HomeView> {
                               (sum, g) => sum + (g['monto'] as num).toDouble(),
                             );
 
-                            final totalTransferencias = transferenciasEnRango.fold<double>(
-                              0.0,
-                              (sum, t) => sum + (t['monto'] as num).toDouble(),
-                            );
+                            final totalTransferencias = transferenciasEnRango
+                                .fold<double>(
+                                  0.0,
+                                  (sum, t) =>
+                                      sum + (t['monto'] as num).toDouble(),
+                                );
 
-                            final totalPrestamos = prestamosEnRango.fold<double>(
-                              0.0,
-                              (sum, p) => sum + (p['monto'] as num).toDouble(),
-                            );
+                            final totalPrestamos = prestamosEnRango
+                                .fold<double>(
+                                  0.0,
+                                  (sum, p) =>
+                                      sum + (p['monto'] as num).toDouble(),
+                                );
 
                             // Estadísticas del banco seleccionado (con filtro de fecha para estadísticas)
                             final DateTime? statsStart = _fromDate;
@@ -287,91 +350,179 @@ class _HomeViewState extends State<HomeView> {
                             // Validar que las fechas sean correctas
                             bool rangoValido = true;
                             if (statsStart != null && statsEnd != null) {
-                              rangoValido = statsStart.isBefore(statsEnd) || statsStart.isAtSameMomentAs(statsEnd);
+                              rangoValido =
+                                  statsStart.isBefore(statsEnd) ||
+                                  statsStart.isAtSameMomentAs(statsEnd);
                             }
 
                             // Filtrar datos del banco seleccionado
-                            final ingresosDelBanco = rangoValido ? ingresos.where((i) {
-                              final bancoId = i['bancoId'] as String;
-                              if (bancoId != _selectedBankId) return false;
-                              
-                              if (statsStart == null && statsEnd == null) return true;
-                              
-                              final fecha = (i['fecha'] as Timestamp).toDate();
-                              if (statsStart != null && statsEnd != null) {
-                                return fecha.isAfter(statsStart.subtract(const Duration(seconds: 1))) &&
-                                    fecha.isBefore(statsEnd.add(const Duration(days: 1)));
-                              }
-                              if (statsStart != null) {
-                                return fecha.isAfter(statsStart.subtract(const Duration(seconds: 1)));
-                              }
-                              if (statsEnd != null) {
-                                return fecha.isBefore(statsEnd.add(const Duration(days: 1)));
-                              }
-                              return true;
-                            }).toList() : <Map<String, dynamic>>[];
+                            final ingresosDelBanco = rangoValido
+                                ? ingresos.where((i) {
+                                    final bancoId = i['bancoId'] as String?;
+                                    if (bancoId == null ||
+                                        bancoId != _selectedBankId)
+                                      return false;
 
-                            final gastosDelBanco = rangoValido ? gastos.where((g) {
-                              final bancoId = g['bancoId'] as String;
-                              if (bancoId != _selectedBankId) return false;
-                              
-                              if (statsStart == null && statsEnd == null) return true;
-                              
-                              final fecha = (g['fecha'] as Timestamp).toDate();
-                              if (statsStart != null && statsEnd != null) {
-                                return fecha.isAfter(statsStart.subtract(const Duration(seconds: 1))) &&
-                                    fecha.isBefore(statsEnd.add(const Duration(days: 1)));
-                              }
-                              if (statsStart != null) {
-                                return fecha.isAfter(statsStart.subtract(const Duration(seconds: 1)));
-                              }
-                              if (statsEnd != null) {
-                                return fecha.isBefore(statsEnd.add(const Duration(days: 1)));
-                              }
-                              return true;
-                            }).toList() : <Map<String, dynamic>>[];
+                                    if (statsStart == null && statsEnd == null)
+                                      return true;
 
-                            final transferenciasDelBanco = rangoValido ? transferencias.where((t) {
-                              final origenId = t['bancoOrigenId'] as String;
-                              final destinoId = t['bancoDestinoId'] as String;
-                              final perteneceAlBanco = origenId == _selectedBankId || destinoId == _selectedBankId;
-                              if (!perteneceAlBanco) return false;
-                              
-                              if (statsStart == null && statsEnd == null) return true;
-                              
-                              final fecha = (t['fecha'] as Timestamp).toDate();
-                              if (statsStart != null && statsEnd != null) {
-                                return fecha.isAfter(statsStart.subtract(const Duration(seconds: 1))) &&
-                                    fecha.isBefore(statsEnd.add(const Duration(days: 1)));
-                              }
-                              if (statsStart != null) {
-                                return fecha.isAfter(statsStart.subtract(const Duration(seconds: 1)));
-                              }
-                              if (statsEnd != null) {
-                                return fecha.isBefore(statsEnd.add(const Duration(days: 1)));
-                              }
-                              return true;
-                            }).toList() : <Map<String, dynamic>>[];
+                                    final fecha = (i['fecha'] as Timestamp)
+                                        .toDate();
+                                    if (statsStart != null &&
+                                        statsEnd != null) {
+                                      return fecha.isAfter(
+                                            statsStart.subtract(
+                                              const Duration(seconds: 1),
+                                            ),
+                                          ) &&
+                                          fecha.isBefore(
+                                            statsEnd.add(
+                                              const Duration(days: 1),
+                                            ),
+                                          );
+                                    }
+                                    if (statsStart != null) {
+                                      return fecha.isAfter(
+                                        statsStart.subtract(
+                                          const Duration(seconds: 1),
+                                        ),
+                                      );
+                                    }
+                                    if (statsEnd != null) {
+                                      return fecha.isBefore(
+                                        statsEnd.add(const Duration(days: 1)),
+                                      );
+                                    }
+                                    return true;
+                                  }).toList()
+                                : <Map<String, dynamic>>[];
 
-                            final prestamosDelBanco = rangoValido ? prestamos.where((p) {
-                              final bancoId = p['bancoId'] as String;
-                              if (bancoId != _selectedBankId) return false;
-                              
-                              if (statsStart == null && statsEnd == null) return true;
-                              
-                              final fecha = (p['fecha'] as Timestamp).toDate();
-                              if (statsStart != null && statsEnd != null) {
-                                return fecha.isAfter(statsStart.subtract(const Duration(seconds: 1))) &&
-                                    fecha.isBefore(statsEnd.add(const Duration(days: 1)));
-                              }
-                              if (statsStart != null) {
-                                return fecha.isAfter(statsStart.subtract(const Duration(seconds: 1)));
-                              }
-                              if (statsEnd != null) {
-                                return fecha.isBefore(statsEnd.add(const Duration(days: 1)));
-                              }
-                              return true;
-                            }).toList() : <Map<String, dynamic>>[];
+                            final gastosDelBanco = rangoValido
+                                ? gastos.where((g) {
+                                    final bancoId = g['bancoId'] as String?;
+                                    if (bancoId == null ||
+                                        bancoId != _selectedBankId)
+                                      return false;
+
+                                    if (statsStart == null && statsEnd == null)
+                                      return true;
+
+                                    final fecha = (g['fecha'] as Timestamp)
+                                        .toDate();
+                                    if (statsStart != null &&
+                                        statsEnd != null) {
+                                      return fecha.isAfter(
+                                            statsStart.subtract(
+                                              const Duration(seconds: 1),
+                                            ),
+                                          ) &&
+                                          fecha.isBefore(
+                                            statsEnd.add(
+                                              const Duration(days: 1),
+                                            ),
+                                          );
+                                    }
+                                    if (statsStart != null) {
+                                      return fecha.isAfter(
+                                        statsStart.subtract(
+                                          const Duration(seconds: 1),
+                                        ),
+                                      );
+                                    }
+                                    if (statsEnd != null) {
+                                      return fecha.isBefore(
+                                        statsEnd.add(const Duration(days: 1)),
+                                      );
+                                    }
+                                    return true;
+                                  }).toList()
+                                : <Map<String, dynamic>>[];
+
+                            final transferenciasDelBanco = rangoValido
+                                ? transferencias.where((t) {
+                                    final origenId =
+                                        t['bancoOrigenId'] as String?;
+                                    final destinoId =
+                                        t['bancoDestinoId'] as String?;
+                                    final perteneceAlBanco =
+                                        origenId == _selectedBankId ||
+                                        destinoId == _selectedBankId;
+                                    if (!perteneceAlBanco) return false;
+
+                                    if (statsStart == null && statsEnd == null)
+                                      return true;
+
+                                    final fecha = (t['fecha'] as Timestamp)
+                                        .toDate();
+                                    if (statsStart != null &&
+                                        statsEnd != null) {
+                                      return fecha.isAfter(
+                                            statsStart.subtract(
+                                              const Duration(seconds: 1),
+                                            ),
+                                          ) &&
+                                          fecha.isBefore(
+                                            statsEnd.add(
+                                              const Duration(days: 1),
+                                            ),
+                                          );
+                                    }
+                                    if (statsStart != null) {
+                                      return fecha.isAfter(
+                                        statsStart.subtract(
+                                          const Duration(seconds: 1),
+                                        ),
+                                      );
+                                    }
+                                    if (statsEnd != null) {
+                                      return fecha.isBefore(
+                                        statsEnd.add(const Duration(days: 1)),
+                                      );
+                                    }
+                                    return true;
+                                  }).toList()
+                                : <Map<String, dynamic>>[];
+
+                            final prestamosDelBanco = rangoValido
+                                ? prestamos.where((p) {
+                                    final bancoId = p['bancoId'] as String?;
+                                    if (bancoId == null ||
+                                        bancoId != _selectedBankId)
+                                      return false;
+
+                                    if (statsStart == null && statsEnd == null)
+                                      return true;
+
+                                    final fecha = (p['fecha'] as Timestamp)
+                                        .toDate();
+                                    if (statsStart != null &&
+                                        statsEnd != null) {
+                                      return fecha.isAfter(
+                                            statsStart.subtract(
+                                              const Duration(seconds: 1),
+                                            ),
+                                          ) &&
+                                          fecha.isBefore(
+                                            statsEnd.add(
+                                              const Duration(days: 1),
+                                            ),
+                                          );
+                                    }
+                                    if (statsStart != null) {
+                                      return fecha.isAfter(
+                                        statsStart.subtract(
+                                          const Duration(seconds: 1),
+                                        ),
+                                      );
+                                    }
+                                    if (statsEnd != null) {
+                                      return fecha.isBefore(
+                                        statsEnd.add(const Duration(days: 1)),
+                                      );
+                                    }
+                                    return true;
+                                  }).toList()
+                                : <Map<String, dynamic>>[];
 
                             final bancoIngresos = ingresosDelBanco.fold<double>(
                               0.0,
@@ -383,15 +534,19 @@ class _HomeViewState extends State<HomeView> {
                               (sum, g) => sum + (g['monto'] as num).toDouble(),
                             );
 
-                            final bancoTransfer = transferenciasDelBanco.fold<double>(
-                              0.0,
-                              (sum, t) => sum + (t['monto'] as num).toDouble(),
-                            );
+                            final bancoTransfer = transferenciasDelBanco
+                                .fold<double>(
+                                  0.0,
+                                  (sum, t) =>
+                                      sum + (t['monto'] as num).toDouble(),
+                                );
 
-                            final bancoPrestamos = prestamosDelBanco.fold<double>(
-                              0.0,
-                              (sum, p) => sum + (p['monto'] as num).toDouble(),
-                            );
+                            final bancoPrestamos = prestamosDelBanco
+                                .fold<double>(
+                                  0.0,
+                                  (sum, p) =>
+                                      sum + (p['monto'] as num).toDouble(),
+                                );
 
                             return Column(
                               children: [
@@ -401,7 +556,12 @@ class _HomeViewState extends State<HomeView> {
                                 // Contenido scrolleable
                                 Expanded(
                                   child: ListView(
-                                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      0,
+                                      16,
+                                      16,
+                                    ),
                                     children: [
                                       // =========================
                                       // RESUMEN
@@ -410,9 +570,10 @@ class _HomeViewState extends State<HomeView> {
                                         children: [
                                           Text(
                                             'Resumen',
-                                            style: theme.textTheme.titleLarge?.copyWith(
-                                              fontWeight: FontWeight.w900,
-                                            ),
+                                            style: theme.textTheme.titleLarge
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w900,
+                                                ),
                                           ),
                                           const Spacer(),
 
@@ -422,10 +583,16 @@ class _HomeViewState extends State<HomeView> {
                                             border: stroke,
                                             color: card,
                                             textColor: isDark
-                                                ? Colors.white.withValues(alpha: 0.85)
-                                                : Colors.black.withValues(alpha: 0.75),
+                                                ? Colors.white.withValues(
+                                                    alpha: 0.85,
+                                                  )
+                                                : Colors.black.withValues(
+                                                    alpha: 0.75,
+                                                  ),
                                             muted: muted,
-                                            onSelected: (v) => setState(() => _summaryRange = v),
+                                            onSelected: (v) => setState(
+                                              () => _summaryRange = v,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -442,8 +609,9 @@ class _HomeViewState extends State<HomeView> {
                                               color: card,
                                               child: _KpiTile(
                                                 tag: 'Saldo total',
-                                                value: 'S/ ${saldoTotal.toStringAsFixed(2)}',
-                                                icon: Icons.paid_rounded,
+                                                value:
+                                                    'S/ ${saldoTotal.toStringAsFixed(2)}',
+                                                icon: FontAwesomeIcons.wallet,
                                                 accent: active,
                                                 muted: muted,
                                                 isDark: isDark,
@@ -455,10 +623,24 @@ class _HomeViewState extends State<HomeView> {
                                             child: _TileCard(
                                               border: stroke,
                                               color: card,
+                                              onTap: () {
+                                                Navigator.of(context).push(
+                                                  MaterialPageRoute(
+                                                    builder: (_) => KpiHistoryView(
+                                                      type: KpiHistoryType
+                                                          .ingresos,
+                                                      title:
+                                                          'Historial de Ingresos',
+                                                    ),
+                                                  ),
+                                                );
+                                              },
                                               child: _KpiTile(
                                                 tag: 'Ingresos',
-                                                value: 'S/ ${totalIngresos.toStringAsFixed(2)}',
-                                                icon: Icons.arrow_downward_rounded,
+                                                value:
+                                                    'S/ ${totalIngresos.toStringAsFixed(2)}',
+                                                icon:
+                                                    FontAwesomeIcons.arrowDown,
                                                 accent: active,
                                                 muted: muted,
                                                 isDark: isDark,
@@ -475,10 +657,24 @@ class _HomeViewState extends State<HomeView> {
                                             child: _TileCard(
                                               border: stroke,
                                               color: card,
+                                              onTap: () {
+                                                Navigator.of(context).push(
+                                                  MaterialPageRoute(
+                                                    builder: (_) => KpiHistoryView(
+                                                      type:
+                                                          KpiHistoryType.gastos,
+                                                      title:
+                                                          'Historial de Gastos',
+                                                    ),
+                                                  ),
+                                                );
+                                              },
                                               child: _KpiTile(
                                                 tag: 'Gastos',
-                                                value: 'S/ ${totalGastos.toStringAsFixed(2)}',
-                                                icon: Icons.arrow_upward_rounded,
+                                                value:
+                                                    'S/ ${totalGastos.toStringAsFixed(2)}',
+                                                icon: FontAwesomeIcons
+                                                    .cartShopping,
                                                 accent: active,
                                                 muted: muted,
                                                 isDark: isDark,
@@ -490,10 +686,24 @@ class _HomeViewState extends State<HomeView> {
                                             child: _TileCard(
                                               border: stroke,
                                               color: card,
+                                              onTap: () {
+                                                Navigator.of(context).push(
+                                                  MaterialPageRoute(
+                                                    builder: (_) => KpiHistoryView(
+                                                      type: KpiHistoryType
+                                                          .prestamos,
+                                                      title:
+                                                          'Historial de Préstamos',
+                                                    ),
+                                                  ),
+                                                );
+                                              },
                                               child: _KpiTile(
                                                 tag: 'Préstamos',
-                                                value: 'S/ ${totalPrestamos.toStringAsFixed(2)}',
-                                                icon: Icons.handshake_rounded,
+                                                value:
+                                                    'S/ ${totalPrestamos.toStringAsFixed(2)}',
+                                                icon: FontAwesomeIcons
+                                                    .handHoldingDollar,
                                                 accent: active,
                                                 muted: muted,
                                                 isDark: isDark,
@@ -507,10 +717,23 @@ class _HomeViewState extends State<HomeView> {
                                       _TileCard(
                                         border: stroke,
                                         color: card,
+                                        onTap: () {
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (_) => KpiHistoryView(
+                                                type: KpiHistoryType
+                                                    .transferencias,
+                                                title:
+                                                    'Historial de Transferencias',
+                                              ),
+                                            ),
+                                          );
+                                        },
                                         child: _KpiTile(
                                           tag: 'Transferencias',
-                                          value: 'S/ ${totalTransferencias.toStringAsFixed(2)}',
-                                          icon: Icons.swap_horiz_rounded,
+                                          value:
+                                              'S/ ${totalTransferencias.toStringAsFixed(2)}',
+                                          icon: FontAwesomeIcons.rightLeft,
                                           accent: active,
                                           muted: muted,
                                           isDark: isDark,
@@ -527,15 +750,19 @@ class _HomeViewState extends State<HomeView> {
                                         children: [
                                           Text(
                                             'Bancos',
-                                            style: theme.textTheme.titleMedium?.copyWith(
-                                              fontWeight: FontWeight.w900,
-                                            ),
+                                            style: theme.textTheme.titleMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w900,
+                                                ),
                                           ),
                                           const Spacer(),
                                           _IconNavButton(
                                             onTap: () {
                                               Navigator.of(context).push(
-                                                MaterialPageRoute(builder: (_) => const BancosView()),
+                                                MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      const BancosView(),
+                                                ),
                                               );
                                             },
                                             border: stroke,
@@ -555,7 +782,10 @@ class _HomeViewState extends State<HomeView> {
                                             child: Center(
                                               child: Text(
                                                 'No tienes bancos registrados',
-                                                style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+                                                style: theme
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.copyWith(color: muted),
                                               ),
                                             ),
                                           ),
@@ -564,20 +794,27 @@ class _HomeViewState extends State<HomeView> {
                                         _TileCard(
                                           border: stroke,
                                           color: card,
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 10,
+                                          ),
                                           child: SizedBox(
                                             height: 96,
                                             child: ListView.separated(
                                               scrollDirection: Axis.horizontal,
                                               itemCount: bancos.length,
-                                              separatorBuilder: (_, __) => const SizedBox(width: 10),
+                                              separatorBuilder: (_, __) =>
+                                                  const SizedBox(width: 10),
                                               itemBuilder: (context, i) {
                                                 final banco = bancos[i];
-                                                final selected = i == _selectedBankIndex;
+                                                final selected =
+                                                    i == _selectedBankIndex;
                                                 return _BankMemberChip(
                                                   logo: banco['logo'],
                                                   nombre: banco['nombre'],
-                                                  balance: (banco['saldo'] as num).toDouble(),
+                                                  balance:
+                                                      (banco['saldo'] as num)
+                                                          .toDouble(),
                                                   selected: selected,
                                                   accent: active,
                                                   stroke: stroke,
@@ -585,7 +822,8 @@ class _HomeViewState extends State<HomeView> {
                                                   isDark: isDark,
                                                   onTap: () => setState(() {
                                                     _selectedBankIndex = i;
-                                                    _selectedBankId = banco['id'];
+                                                    _selectedBankId =
+                                                        banco['id'];
                                                   }),
                                                 );
                                               },
@@ -602,49 +840,72 @@ class _HomeViewState extends State<HomeView> {
                                         children: [
                                           Text(
                                             'Estadística',
-                                            style: theme.textTheme.titleMedium?.copyWith(
-                                              fontWeight: FontWeight.w900,
-                                            ),
+                                            style: theme.textTheme.titleMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w900,
+                                                ),
                                           ),
                                           const Spacer(),
                                           Text(
                                             _statsRangeLabel,
-                                            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(color: muted),
                                           ),
                                           const SizedBox(width: 10),
                                           _IconNavButton(
                                             onTap: () async {
-                                              final res = await _openStatsCalendarPopup(context);
+                                              final res =
+                                                  await _openStatsCalendarPopup(
+                                                    context,
+                                                  );
                                               if (res == null) return;
-                                              
+
                                               // Validar que la fecha de inicio no sea posterior a la fecha de fin
-                                              if (res.$1 != null && res.$2 != null) {
+                                              if (res.$1 != null &&
+                                                  res.$2 != null) {
                                                 if (res.$1!.isAfter(res.$2!)) {
                                                   if (mounted) {
-                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
                                                       SnackBar(
                                                         content: const Row(
                                                           children: [
-                                                            Icon(Icons.error, color: Colors.white),
+                                                            Icon(
+                                                              Icons.error,
+                                                              color:
+                                                                  Colors.white,
+                                                            ),
                                                             SizedBox(width: 12),
                                                             Expanded(
-                                                              child: Text('La fecha de inicio no puede ser posterior a la fecha de fin'),
+                                                              child: Text(
+                                                                'La fecha de inicio no puede ser posterior a la fecha de fin',
+                                                              ),
                                                             ),
                                                           ],
                                                         ),
-                                                        backgroundColor: Colors.red.shade600,
-                                                        behavior: SnackBarBehavior.floating,
+                                                        backgroundColor:
+                                                            Colors.red.shade600,
+                                                        behavior:
+                                                            SnackBarBehavior
+                                                                .floating,
                                                         shape: RoundedRectangleBorder(
-                                                          borderRadius: BorderRadius.circular(12),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                12,
+                                                              ),
                                                         ),
-                                                        margin: const EdgeInsets.all(16),
+                                                        margin:
+                                                            const EdgeInsets.all(
+                                                              16,
+                                                            ),
                                                       ),
                                                     );
                                                   }
                                                   return;
                                                 }
                                               }
-                                              
+
                                               setState(() {
                                                 _fromDate = res.$1;
                                                 _toDate = res.$2;
@@ -661,21 +922,34 @@ class _HomeViewState extends State<HomeView> {
                                       // Advertencia si el rango no es válido
                                       if (!rangoValido)
                                         Padding(
-                                          padding: const EdgeInsets.only(bottom: 10),
+                                          padding: const EdgeInsets.only(
+                                            bottom: 10,
+                                          ),
                                           child: _TileCard(
-                                            border: Colors.red.shade600.withValues(alpha: 0.40),
-                                            color: Colors.red.shade600.withValues(alpha: 0.10),
+                                            border: Colors.red.shade600
+                                                .withValues(alpha: 0.40),
+                                            color: Colors.red.shade600
+                                                .withValues(alpha: 0.10),
                                             child: Row(
                                               children: [
-                                                Icon(Icons.warning_rounded, color: Colors.red.shade600),
+                                                Icon(
+                                                  Icons.warning_rounded,
+                                                  color: Colors.red.shade600,
+                                                ),
                                                 const SizedBox(width: 12),
                                                 Expanded(
                                                   child: Text(
                                                     'La fecha de inicio debe ser anterior o igual a la fecha de fin',
-                                                    style: theme.textTheme.bodySmall?.copyWith(
-                                                      fontWeight: FontWeight.w700,
-                                                      color: Colors.red.shade700,
-                                                    ),
+                                                    style: theme
+                                                        .textTheme
+                                                        .bodySmall
+                                                        ?.copyWith(
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          color: Colors
+                                                              .red
+                                                              .shade700,
+                                                        ),
                                                   ),
                                                 ),
                                               ],
@@ -695,25 +969,32 @@ class _HomeViewState extends State<HomeView> {
                                             child: Center(
                                               child: Text(
                                                 'Selecciona un banco para ver estadísticas',
-                                                style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+                                                style: theme
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.copyWith(color: muted),
                                               ),
                                             ),
                                           ),
                                         )
                                       else
                                         AnimatedSwitcher(
-                                          duration: const Duration(milliseconds: 220),
+                                          duration: const Duration(
+                                            milliseconds: 220,
+                                          ),
                                           switchInCurve: Curves.easeOut,
                                           switchOutCurve: Curves.easeIn,
                                           child: Column(
-                                            key: ValueKey('bank_$_selectedBankId'),
+                                            key: ValueKey(
+                                              'bank_$_selectedBankId',
+                                            ),
                                             children: [
                                               _TileCard(
                                                 border: stroke,
                                                 color: card,
                                                 child: _PowerSection(
                                                   title: 'Flujo de efectivo',
-                                                  subtitle: bancos.isNotEmpty 
+                                                  subtitle: bancos.isNotEmpty
                                                       ? '${bancos[_selectedBankIndex]['nombre']}${rangoValido ? (statsStart != null || statsEnd != null ? ' - Rango personalizado' : ' - Sin filtro') : ''}'
                                                       : 'Sin banco seleccionado',
                                                   muted: muted,
@@ -731,7 +1012,8 @@ class _HomeViewState extends State<HomeView> {
                                                 color: card,
                                                 child: _PowerSection(
                                                   title: 'Distribución',
-                                                  subtitle: 'Transferencias y Préstamos',
+                                                  subtitle:
+                                                      'Transferencias y Préstamos',
                                                   muted: muted,
                                                   child: _RingBreakdownModern(
                                                     transfer: bancoTransfer,
@@ -790,7 +1072,7 @@ class _RangeChip extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     // Fondo sólido para el menú
     final menuBg = isDark ? const Color(0xFF1C1D22) : Colors.white;
-    
+
     return PopupMenuButton<SummaryRange>(
       onSelected: onSelected,
       offset: const Offset(0, 46),
@@ -821,9 +1103,9 @@ class _RangeChip extends StatelessWidget {
             Text(
               label,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: textColor,
-                    fontWeight: FontWeight.w800,
-                  ),
+                color: textColor,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(width: 8),
             Icon(Icons.expand_more_rounded, size: 18, color: muted),
@@ -862,7 +1144,9 @@ class _InlineRangePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fg = isDark ? Colors.white.withValues(alpha: 0.85) : Colors.black.withValues(alpha: 0.75);
+    final fg = isDark
+        ? Colors.white.withValues(alpha: 0.85)
+        : Colors.black.withValues(alpha: 0.75);
 
     final now = DateTime.now();
     final first = DateTime(now.year - 5, 1, 1);
@@ -874,7 +1158,9 @@ class _InlineRangePicker extends StatelessWidget {
       children: [
         Text(
           'Selecciona rango',
-          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
         ),
         const SizedBox(height: 6),
         Text(
@@ -888,7 +1174,9 @@ class _InlineRangePicker extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: border, width: 1.5),
-            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.02),
+            color: (isDark ? Colors.white : Colors.black).withValues(
+              alpha: 0.02,
+            ),
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -898,7 +1186,9 @@ class _InlineRangePicker extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.04),
+                  color: (isDark ? Colors.white : Colors.black).withValues(
+                    alpha: 0.04,
+                  ),
                   border: Border(bottom: BorderSide(color: border)),
                 ),
                 child: Row(
@@ -946,7 +1236,10 @@ class _InlineRangePicker extends StatelessWidget {
               icon: Icon(Icons.refresh_rounded, color: fg, size: 18),
               label: Text(
                 'Limpiar',
-                style: theme.textTheme.bodyMedium?.copyWith(color: fg, fontWeight: FontWeight.w700),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: fg,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             ElevatedButton.icon(
@@ -954,7 +1247,10 @@ class _InlineRangePicker extends StatelessWidget {
               icon: const Icon(Icons.check_rounded, size: 18),
               label: const Text('Aplicar'),
               style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -1008,10 +1304,7 @@ class _DateChip extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             date == null ? '—' : _fmt(date!),
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-            ),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
           ),
         ],
       ),
@@ -1055,7 +1348,7 @@ class _CompactRangeCalendarState extends State<_CompactRangeCalendar> {
   void _onDateTapped(DateTime date) {
     // Normalizar la fecha al inicio del día
     final normalizedDate = DateTime(date.year, date.month, date.day);
-    
+
     if (_selectingFrom || widget.from == null) {
       widget.onFromChanged(normalizedDate);
       setState(() => _selectingFrom = false);
@@ -1089,19 +1382,21 @@ class _TileCard extends StatelessWidget {
   final Color border;
   final Widget child;
   final EdgeInsets padding;
+  final VoidCallback? onTap;
 
   const _TileCard({
     required this.color,
     required this.border,
     required this.child,
     this.padding = const EdgeInsets.all(14),
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
+    final card = Container(
       padding: padding,
       decoration: BoxDecoration(
         color: color,
@@ -1116,6 +1411,14 @@ class _TileCard extends StatelessWidget {
         ],
       ),
       child: child,
+    );
+
+    if (onTap == null) return card;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: card,
     );
   }
 }
@@ -1137,7 +1440,9 @@ class _IconNavButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final fg = isDark ? Colors.white.withValues(alpha: 0.80) : Colors.black.withValues(alpha: 0.70);
+    final fg = isDark
+        ? Colors.white.withValues(alpha: 0.80)
+        : Colors.black.withValues(alpha: 0.70);
 
     return InkWell(
       onTap: onTap,
@@ -1183,25 +1488,30 @@ class _KpiTile extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width: 44,
-          height: 44,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: bubble,
-            border: Border.all(color: accent.withValues(alpha: 0.18)),
+            border: Border.all(color: accent.withValues(alpha: 0.14)),
           ),
-          child: Icon(icon, color: accent, size: 22),
+          child: Center(child: FaIcon(icon, color: accent, size: 17)),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // tag tipo pill
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
-                  color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.04),
+                  color: (isDark ? Colors.white : Colors.black).withValues(
+                    alpha: 0.04,
+                  ),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -1225,7 +1535,7 @@ class _KpiTile extends StatelessWidget {
                   value,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
-                    fontSize: fullWidth ? 20 : 18,
+                    fontSize: fullWidth ? 19 : 17,
                   ),
                 ),
               ),
@@ -1264,7 +1574,9 @@ class _BankMemberChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final fg = isDark ? Colors.white.withValues(alpha: 0.85) : Colors.black.withValues(alpha: 0.75);
+    final fg = isDark
+        ? Colors.white.withValues(alpha: 0.85)
+        : Colors.black.withValues(alpha: 0.75);
     final bg = selected ? accent.withValues(alpha: isDark ? 0.18 : 0.10) : soft;
     final brd = selected ? accent.withValues(alpha: 0.35) : stroke;
 
@@ -1286,7 +1598,7 @@ class _BankMemberChip extends StatelessWidget {
                     color: accent.withValues(alpha: isDark ? 0.18 : 0.12),
                     blurRadius: 14,
                     offset: const Offset(0, 8),
-                  )
+                  ),
                 ]
               : null,
         ),
@@ -1304,7 +1616,9 @@ class _BankMemberChip extends StatelessWidget {
                     shape: BoxShape.circle,
                     color: selected
                         ? accent.withValues(alpha: isDark ? 0.18 : 0.12)
-                        : (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+                        : (isDark ? Colors.white : Colors.black).withValues(
+                            alpha: 0.06,
+                          ),
                     border: Border.all(
                       color: selected ? accent.withValues(alpha: 0.35) : stroke,
                       width: 1.5,
@@ -1333,7 +1647,8 @@ class _BankMemberChip extends StatelessWidget {
                         color: accent.withValues(alpha: 0.95),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.40),
+                          color: (isDark ? Colors.black : Colors.white)
+                              .withValues(alpha: 0.40),
                         ),
                       ),
                     ),
@@ -1346,7 +1661,7 @@ class _BankMemberChip extends StatelessWidget {
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
-                'S/ ${balance.toStringAsFixed(0)}',
+                'S/ ${balance.toStringAsFixed(2)}',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w900,
                   color: selected ? accent : fg,
@@ -1380,9 +1695,17 @@ class _PowerSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+        Text(
+          title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+        Text(
+          subtitle,
+          style: theme.textTheme.bodySmall?.copyWith(color: muted),
+        ),
         const SizedBox(height: 14),
         child,
       ],
@@ -1407,10 +1730,17 @@ class _CompareBarsModern extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = isDark ? Colors.white.withValues(alpha: 0.85) : Colors.black.withValues(alpha: 0.75);
-    final sub = isDark ? Colors.white.withValues(alpha: 0.65) : Colors.black.withValues(alpha: 0.55);
+    final fg = isDark
+        ? Colors.white.withValues(alpha: 0.85)
+        : Colors.black.withValues(alpha: 0.75);
+    final sub = isDark
+        ? Colors.white.withValues(alpha: 0.65)
+        : Colors.black.withValues(alpha: 0.55);
 
-    final maxV = (ingresos > gastos ? ingresos : gastos).clamp(1, double.infinity);
+    final maxV = (ingresos > gastos ? ingresos : gastos).clamp(
+      1,
+      double.infinity,
+    );
     final pIngresos = (ingresos / maxV).clamp(0.0, 1.0);
     final pGastos = (gastos / maxV).clamp(0.0, 1.0);
 
@@ -1468,9 +1798,21 @@ class _MetricRow extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(label, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900, color: fg)),
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w900,
+                color: fg,
+              ),
+            ),
             const Spacer(),
-            Text(value, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900, color: fg)),
+            Text(
+              value,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w900,
+                color: fg,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -1494,7 +1836,10 @@ class _MetricRow extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        Text('Comparación relativa', style: theme.textTheme.bodySmall?.copyWith(color: sub)),
+        Text(
+          'Comparación relativa',
+          style: theme.textTheme.bodySmall?.copyWith(color: sub),
+        ),
       ],
     );
   }
@@ -1522,7 +1867,9 @@ class _RingBreakdownModern extends StatelessWidget {
     final total = (transfer + prestamos).clamp(1, double.infinity);
     final p = (transfer / total).clamp(0.0, 1.0);
 
-    final ringBg = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.10);
+    final ringBg = (isDark ? Colors.white : Colors.black).withValues(
+      alpha: 0.10,
+    );
     final ringFg = accent.withValues(alpha: 0.90);
 
     return Row(
@@ -1541,7 +1888,9 @@ class _RingBreakdownModern extends StatelessWidget {
             child: Center(
               child: Text(
                 '${(p * 100).toStringAsFixed(0)}%',
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
           ),
@@ -1560,7 +1909,9 @@ class _RingBreakdownModern extends StatelessWidget {
               _LegendLine(
                 label: 'Préstamos',
                 value: 'S/ ${prestamos.toStringAsFixed(2)}',
-                dot: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.35),
+                dot: (isDark ? Colors.white : Colors.black).withValues(
+                  alpha: 0.35,
+                ),
               ),
             ],
           ),
@@ -1586,10 +1937,26 @@ class _LegendLine extends StatelessWidget {
     final theme = Theme.of(context);
     return Row(
       children: [
-        Container(width: 10, height: 10, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+        ),
         const SizedBox(width: 10),
-        Expanded(child: Text(label, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800))),
-        Text(value, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
+        Expanded(
+          child: Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
       ],
     );
   }
@@ -1610,26 +1977,26 @@ class _RingPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2 - 8;
-    
+
     // Anillo de fondo
     final bgPaint = Paint()
       ..color = background
       ..style = PaintingStyle.stroke
       ..strokeWidth = 12
       ..strokeCap = StrokeCap.round;
-    
+
     canvas.drawCircle(center, radius, bgPaint);
-    
+
     // Anillo de progreso
     final fgPaint = Paint()
       ..color = foreground
       ..style = PaintingStyle.stroke
       ..strokeWidth = 12
       ..strokeCap = StrokeCap.round;
-    
+
     const startAngle = -math.pi / 2; // -90 grados (arriba)
     final sweepAngle = 2 * math.pi * percent;
-    
+
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
       startAngle,

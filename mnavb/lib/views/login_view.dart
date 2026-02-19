@@ -30,7 +30,10 @@ class _LoginViewState extends State<LoginView> {
     emailCtrl = TextEditingController();
     passCtrl = TextEditingController();
     // Lanzar la carga de sesión al iniciar
-    final remember = Provider.of<RememberSessionProvider>(context, listen: false);
+    final remember = Provider.of<RememberSessionProvider>(
+      context,
+      listen: false,
+    );
     _loadSessionFuture = remember.loadSession();
   }
 
@@ -72,14 +75,19 @@ class _LoginViewState extends State<LoginView> {
                     show: loginVM.isLoading,
                     child: Stack(
                       children: [
-                        Positioned(
-                          top: 24,
-                          left: 24,
-                          child: ThemeSwitch(),
+                        const Positioned(
+                          top: 0,
+                          left: 0,
+                          child: SafeArea(
+                            minimum: EdgeInsets.only(top: 8, left: 10),
+                            child: ThemeSwitch(),
+                          ),
                         ),
                         LayoutBuilder(
                           builder: (context, c) {
-                            final w = c.maxWidth < 600 ? c.maxWidth * 0.9 : 420.0;
+                            final w = c.maxWidth < 600
+                                ? c.maxWidth * 0.9
+                                : 420.0;
                             return Center(
                               child: SizedBox(
                                 width: w,
@@ -93,23 +101,32 @@ class _LoginViewState extends State<LoginView> {
                                         children: [
                                           const Text(
                                             '¡Bienvenido!',
-                                            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+                                            style: TextStyle(
+                                              fontSize: 28,
+                                              fontWeight: FontWeight.w800,
+                                            ),
                                           ),
                                           const SizedBox(height: 18),
                                           TextField(
                                             controller: emailCtrl,
-                                            keyboardType: TextInputType.emailAddress,
+                                            keyboardType:
+                                                TextInputType.emailAddress,
                                             decoration: const InputDecoration(
                                               labelText: 'Correo electrónico',
                                               suffixText: '@gmail.com',
                                             ),
                                             onChanged: (value) {
                                               if (value.contains('@')) {
-                                                final beforeAt = value.split('@')[0];
+                                                final beforeAt = value.split(
+                                                  '@',
+                                                )[0];
                                                 emailCtrl.text = beforeAt;
-                                                emailCtrl.selection = TextSelection.fromPosition(
-                                                  TextPosition(offset: beforeAt.length),
-                                                );
+                                                emailCtrl.selection =
+                                                    TextSelection.fromPosition(
+                                                      TextPosition(
+                                                        offset: beforeAt.length,
+                                                      ),
+                                                    );
                                               }
                                             },
                                           ),
@@ -120,8 +137,15 @@ class _LoginViewState extends State<LoginView> {
                                             decoration: InputDecoration(
                                               labelText: 'Contraseña',
                                               suffixIcon: IconButton(
-                                                onPressed: () => setState(() => showPassword = !showPassword),
-                                                icon: Icon(showPassword ? Icons.visibility_off : Icons.visibility),
+                                                onPressed: () => setState(
+                                                  () => showPassword =
+                                                      !showPassword,
+                                                ),
+                                                icon: Icon(
+                                                  showPassword
+                                                      ? Icons.visibility_off
+                                                      : Icons.visibility,
+                                                ),
                                               ),
                                             ),
                                           ),
@@ -130,7 +154,8 @@ class _LoginViewState extends State<LoginView> {
                                             children: [
                                               Switch(
                                                 value: remember.remember,
-                                                onChanged: (v) => remember.setRemember(v),
+                                                onChanged: (v) =>
+                                                    remember.setRemember(v),
                                               ),
                                               const SizedBox(width: 8),
                                               const Text('Recordar sesión'),
@@ -141,46 +166,85 @@ class _LoginViewState extends State<LoginView> {
                                             width: double.infinity,
                                             child: ElevatedButton(
                                               style: ElevatedButton.styleFrom(
-                                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      vertical: 14,
+                                                    ),
                                                 shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(12),
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
                                                 ),
-                                                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                                textStyle: const TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
                                               ),
                                               onPressed: loginVM.isLoading
                                                   ? null
                                                   : () async {
-                                                      final ok = await loginVM.login(
-                                                        email: "${emailCtrl.text.trim()}@gmail.com",
-                                                        password: passCtrl.text,
-                                                      );
+                                                      final ok = await loginVM
+                                                          .login(
+                                                            email:
+                                                                "${emailCtrl.text.trim()}@gmail.com",
+                                                            password:
+                                                                passCtrl.text,
+                                                          );
                                                       if (!mounted) return;
                                                       if (ok) {
                                                         // Guardar credenciales si está activado "Recordar sesión"
                                                         if (remember.remember) {
-                                                          await remember.saveCredentials("${emailCtrl.text.trim()}@gmail.com", passCtrl.text);
+                                                          await remember
+                                                              .saveCredentials(
+                                                                "${emailCtrl.text.trim()}@gmail.com",
+                                                                passCtrl.text,
+                                                              );
                                                         } else {
-                                                          remember.setRemember(false);
+                                                          remember.setRemember(
+                                                            false,
+                                                          );
                                                         }
-                                                        
+
                                                         // IMPORTANTE: Guardar UID para procesamiento en background
-                                                        final firebaseService = FirebaseService();
-                                                        final userId = firebaseService.currentUserId;
+                                                        final firebaseService =
+                                                            FirebaseService();
+                                                        final userId =
+                                                            firebaseService
+                                                                .currentUserId;
                                                         if (userId != null) {
-                                                          await remember.saveUserId(userId);
+                                                          await remember
+                                                              .saveUserId(
+                                                                userId,
+                                                              );
                                                         }
-                                                        
+
                                                         // Solicitar permiso de notificaciones (importante para background)
                                                         if (mounted) {
-                                                          await NotificationPermissionHelper.requestNotificationPermission(context);
+                                                          await NotificationPermissionHelper.requestNotificationPermission(
+                                                            context,
+                                                          );
                                                         }
-                                                        
+
                                                         if (mounted) {
-                                                          Navigator.pushReplacementNamed(context, '/home');
+                                                          Navigator.pushReplacementNamed(
+                                                            context,
+                                                            '/home',
+                                                          );
                                                         }
-                                                      } else if (loginVM.errorMessage != null) {
-                                                        ScaffoldMessenger.of(context).showSnackBar(
-                                                          SnackBar(content: Text(loginVM.errorMessage!), behavior: SnackBarBehavior.floating),
+                                                      } else if (loginVM
+                                                              .errorMessage !=
+                                                          null) {
+                                                        ScaffoldMessenger.of(
+                                                          context,
+                                                        ).showSnackBar(
+                                                          SnackBar(
+                                                            content: Text(
+                                                              loginVM
+                                                                  .errorMessage!,
+                                                            ),
+                                                            behavior:
+                                                                SnackBarBehavior
+                                                                    .floating,
+                                                          ),
                                                         );
                                                       }
                                                     },
@@ -188,23 +252,36 @@ class _LoginViewState extends State<LoginView> {
                                                   ? const SizedBox(
                                                       width: 22,
                                                       height: 22,
-                                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                            strokeWidth: 2,
+                                                            color: Colors.white,
+                                                          ),
                                                     )
-                                                  : const Text('Iniciar sesión'),
+                                                  : const Text(
+                                                      'Iniciar sesión',
+                                                    ),
                                             ),
                                           ),
                                           const SizedBox(height: 16),
                                           Row(
-                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
                                             children: [
                                               const Text('¿No tienes cuenta? '),
                                               GestureDetector(
                                                 onTap: () {
-                                                  Navigator.pushReplacementNamed(context, '/register');
+                                                  Navigator.pushReplacementNamed(
+                                                    context,
+                                                    '/register',
+                                                  );
                                                 },
                                                 child: const Text(
                                                   'Regístrate',
-                                                  style: TextStyle(fontWeight: FontWeight.w700, color: Colors.blue),
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w700,
+                                                    color: Colors.blue,
+                                                  ),
                                                 ),
                                               ),
                                             ],
@@ -240,7 +317,9 @@ class _LoginViewState extends State<LoginView> {
         border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
         boxShadow: [
           BoxShadow(
-            color: (isDark ? Colors.black : Colors.black).withAlpha((isDark ? 0.35 : 0.10) * 255 ~/ 1),
+            color: (isDark ? Colors.black : Colors.black).withAlpha(
+              (isDark ? 0.35 : 0.10) * 255 ~/ 1,
+            ),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),

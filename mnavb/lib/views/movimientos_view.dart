@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import '../services/firebase_service.dart';
+
+const double _minimalFaIconSize = 14;
 
 class MovimientosView extends StatefulWidget {
   const MovimientosView({super.key});
@@ -14,10 +17,77 @@ class _MovimientosViewState extends State<MovimientosView> {
   int _tabIndex = 0; // 0 = Transferencia, 1 = Préstamo
   final _firebaseService = FirebaseService();
 
+  Future<void> _eliminarTransferencia(
+    Map<String, dynamic> transferencia,
+  ) async {
+    final transferenciaId = transferencia['id'] as String?;
+    if (transferenciaId == null || transferenciaId.isEmpty) {
+      _mostrarError('No se pudo identificar la transferencia a eliminar');
+      return;
+    }
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (_) => const _DialogoConfirmacion(
+        titulo: 'Eliminar transferencia',
+        mensaje: '¿Estás seguro que quieres eliminar esta transferencia?',
+      ),
+    );
+
+    if (confirmar != true) return;
+
+    try {
+      await _firebaseService.eliminarTransferencia(
+        transferenciaId: transferenciaId,
+      );
+
+      if (!mounted) return;
+      _mostrarExito('Transferencia eliminada');
+    } catch (e) {
+      if (!mounted) return;
+      _mostrarError(e.toString().replaceAll('Exception: ', ''));
+    }
+  }
+
+  void _mostrarError(String mensaje) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(mensaje)),
+          ],
+        ),
+        backgroundColor: Colors.red.shade600,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  void _mostrarExito(String mensaje) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(mensaje)),
+          ],
+        ),
+        backgroundColor: Colors.green.shade600,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     return SafeArea(
       child: Scaffold(
@@ -38,7 +108,10 @@ class _MovimientosViewState extends State<MovimientosView> {
               _SegmentPills(
                 value: _tabIndex,
                 labels: const ['Transferencia', 'Préstamo'],
-                icons: const [Icons.swap_horiz_rounded, Icons.handshake_rounded],
+                icons: const [
+                  FontAwesomeIcons.rightLeft,
+                  FontAwesomeIcons.handshake,
+                ],
                 onChanged: (v) => setState(() => _tabIndex = v),
               ),
 
@@ -69,13 +142,21 @@ class _MovimientosViewState extends State<MovimientosView> {
                       title: _tabIndex == 0
                           ? 'Historial de transferencias'
                           : 'Historial de préstamos',
-                      subtitle: 'Ordenado por fecha más reciente',
+                      subtitle: _tabIndex == 0
+                          ? 'Últimas 5 transferencias'
+                          : 'Últimos 5 préstamos',
+                      icon: _tabIndex == 0
+                          ? FontAwesomeIcons.clockRotateLeft
+                          : FontAwesomeIcons.fileInvoiceDollar,
                     ),
 
                     const SizedBox(height: 10),
 
                     if (_tabIndex == 0)
-                      _HistorialTransferencias(firebaseService: _firebaseService)
+                      _HistorialTransferencias(
+                        firebaseService: _firebaseService,
+                        onDelete: _eliminarTransferencia,
+                      )
                     else
                       _HistorialPrestamos(firebaseService: _firebaseService),
                   ],
@@ -94,10 +175,7 @@ class _MovimientosViewState extends State<MovimientosView> {
 class _TransferenciaFormCard extends StatefulWidget {
   final FirebaseService firebaseService;
 
-  const _TransferenciaFormCard({
-    super.key,
-    required this.firebaseService,
-  });
+  const _TransferenciaFormCard({super.key, required this.firebaseService});
 
   @override
   State<_TransferenciaFormCard> createState() => _TransferenciaFormCardState();
@@ -125,7 +203,9 @@ class _TransferenciaFormCardState extends State<_TransferenciaFormCard> {
     if (!mounted) return;
 
     if (bancos.isEmpty) {
-      _mostrarError('No tienes bancos registrados. Agrega uno primero desde la sección Bancos.');
+      _mostrarError(
+        'No tienes bancos registrados. Agrega uno primero desde la sección Bancos.',
+      );
       return;
     }
 
@@ -168,7 +248,9 @@ class _TransferenciaFormCardState extends State<_TransferenciaFormCard> {
     }).toList();
 
     if (bancosFiltrados.isEmpty) {
-      _mostrarError('No tienes otros bancos disponibles. El banco de origen no puede ser el mismo que el destino.');
+      _mostrarError(
+        'No tienes otros bancos disponibles. El banco de origen no puede ser el mismo que el destino.',
+      );
       return;
     }
 
@@ -285,10 +367,8 @@ class _TransferenciaFormCardState extends State<_TransferenciaFormCard> {
   Future<bool> _mostrarConfirmacion(String titulo, String mensaje) async {
     final resultado = await showDialog<bool>(
       context: context,
-      builder: (context) => _DialogoConfirmacion(
-        titulo: titulo,
-        mensaje: mensaje,
-      ),
+      builder: (context) =>
+          _DialogoConfirmacion(titulo: titulo, mensaje: mensaje),
     );
     return resultado ?? false;
   }
@@ -365,9 +445,10 @@ class _TransferenciaFormCardState extends State<_TransferenciaFormCard> {
             _CampoSelector(
               texto: _bancoOrigen == null
                   ? 'Selecciona banco de origen'
-                  : (_bancoOrigen!['alias'] != null && (_bancoOrigen!['alias'] as String).isNotEmpty)
-                      ? '${_bancoOrigen!['nombre']} - ${_bancoOrigen!['alias']}'
-                      : _bancoOrigen!['nombre'],
+                  : (_bancoOrigen!['alias'] != null &&
+                        (_bancoOrigen!['alias'] as String).isNotEmpty)
+                  ? '${_bancoOrigen!['nombre']} - ${_bancoOrigen!['alias']}'
+                  : _bancoOrigen!['nombre'],
               icono: Icons.account_balance_rounded,
               onTap: _seleccionarBancoOrigen,
               tieneValor: _bancoOrigen != null,
@@ -383,9 +464,10 @@ class _TransferenciaFormCardState extends State<_TransferenciaFormCard> {
             _CampoSelector(
               texto: _bancoDestino == null
                   ? 'Selecciona banco de destino'
-                  : (_bancoDestino!['alias'] != null && (_bancoDestino!['alias'] as String).isNotEmpty)
-                      ? '${_bancoDestino!['nombre']} - ${_bancoDestino!['alias']}'
-                      : _bancoDestino!['nombre'],
+                  : (_bancoDestino!['alias'] != null &&
+                        (_bancoDestino!['alias'] as String).isNotEmpty)
+                  ? '${_bancoDestino!['nombre']} - ${_bancoDestino!['alias']}'
+                  : _bancoDestino!['nombre'],
               icono: Icons.account_balance_wallet_rounded,
               onTap: _seleccionarBancoDestino,
               tieneValor: _bancoDestino != null,
@@ -418,7 +500,9 @@ class _TransferenciaFormCardState extends State<_TransferenciaFormCard> {
               controller: _montoController,
               hint: '0.00',
               isDark: isDark,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
               ],
@@ -476,10 +560,7 @@ class _TransferenciaFormCardState extends State<_TransferenciaFormCard> {
 class _PrestamoFormCard extends StatefulWidget {
   final FirebaseService firebaseService;
 
-  const _PrestamoFormCard({
-    super.key,
-    required this.firebaseService,
-  });
+  const _PrestamoFormCard({super.key, required this.firebaseService});
 
   @override
   State<_PrestamoFormCard> createState() => _PrestamoFormCardState();
@@ -488,6 +569,7 @@ class _PrestamoFormCard extends StatefulWidget {
 class _PrestamoFormCardState extends State<_PrestamoFormCard> {
   Map<String, dynamic>? _bancoSeleccionado;
   String? _tipoCuentaSeleccionada;
+  String _tiempoPrestamo = 'Reciente';
   final _nombreController = TextEditingController();
   final _descripcionController = TextEditingController();
   final _montoController = TextEditingController();
@@ -515,7 +597,9 @@ class _PrestamoFormCardState extends State<_PrestamoFormCard> {
     if (!mounted) return;
 
     if (bancos.isEmpty) {
-      _mostrarError('No tienes bancos registrados. Agrega uno primero desde la sección Bancos.');
+      _mostrarError(
+        'No tienes bancos registrados. Agrega uno primero desde la sección Bancos.',
+      );
       return;
     }
 
@@ -525,7 +609,9 @@ class _PrestamoFormCardState extends State<_PrestamoFormCard> {
     }).toList();
 
     if (bancosFiltrados.isEmpty) {
-      _mostrarError('No tienes bancos del tipo $_tipoCuentaSeleccionada. Agrega uno desde la sección Bancos.');
+      _mostrarError(
+        'No tienes bancos del tipo $_tipoCuentaSeleccionada. Agrega uno desde la sección Bancos.',
+      );
       return;
     }
 
@@ -572,14 +658,18 @@ class _PrestamoFormCardState extends State<_PrestamoFormCard> {
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (_tipoCuentaSeleccionada == null) {
-      _mostrarError('Selecciona el tipo de cuenta');
-      return;
-    }
+    final esPrestamoReciente = _tiempoPrestamo == 'Reciente';
 
-    if (_bancoSeleccionado == null) {
-      _mostrarError('Selecciona un banco');
-      return;
+    if (esPrestamoReciente) {
+      if (_tipoCuentaSeleccionada == null) {
+        _mostrarError('Selecciona el tipo de cuenta');
+        return;
+      }
+
+      if (_bancoSeleccionado == null) {
+        _mostrarError('Selecciona un banco');
+        return;
+      }
     }
 
     final monto = double.tryParse(_montoController.text);
@@ -588,12 +678,16 @@ class _PrestamoFormCardState extends State<_PrestamoFormCard> {
       return;
     }
 
-    // Confirmación con modal mejorado
-    final confirmar = await _mostrarConfirmacionPrestamo(
-      monto: monto,
-      nombrePrestatario: _nombreController.text.trim(),
-      banco: _bancoSeleccionado!,
-    );
+    final confirmar = esPrestamoReciente
+        ? await _mostrarConfirmacionPrestamo(
+            monto: monto,
+            nombrePrestatario: _nombreController.text.trim(),
+            banco: _bancoSeleccionado,
+          )
+        : await _mostrarConfirmacion(
+            'Registrar préstamo antiguo',
+            '¿Deseas registrar este préstamo antiguo por S/ ${monto.toStringAsFixed(2)}?',
+          );
 
     if (!confirmar || !mounted) return;
 
@@ -601,14 +695,16 @@ class _PrestamoFormCardState extends State<_PrestamoFormCard> {
 
     try {
       await widget.firebaseService.registrarPrestamo(
-        bancoId: _bancoSeleccionado!['id'],
-        bancoNombre: _bancoSeleccionado!['nombre'],
-        bancoLogo: _bancoSeleccionado!['logo'],
-        tipoCuenta: _tipoCuentaSeleccionada!,
+        bancoId: esPrestamoReciente ? _bancoSeleccionado!['id'] : null,
+        bancoNombre: esPrestamoReciente ? _bancoSeleccionado!['nombre'] : null,
+        bancoLogo: esPrestamoReciente ? _bancoSeleccionado!['logo'] : null,
+        tipoCuenta: esPrestamoReciente ? _tipoCuentaSeleccionada! : null,
         nombrePrestatario: _nombreController.text.trim(),
         descripcion: _descripcionController.text.trim(),
         monto: monto,
         fecha: _fechaSeleccionada,
+        descontarSaldo: esPrestamoReciente,
+        tipoRegistro: esPrestamoReciente ? 'reciente' : 'antiguo',
       );
 
       if (mounted) {
@@ -634,8 +730,19 @@ class _PrestamoFormCardState extends State<_PrestamoFormCard> {
     });
   }
 
+  void _cambiarTiempoPrestamo(String tiempo) {
+    setState(() {
+      _tiempoPrestamo = tiempo;
+      if (tiempo == 'Antiguo') {
+        _tipoCuentaSeleccionada = null;
+        _bancoSeleccionado = null;
+      }
+    });
+  }
+
   void _limpiarFormulario() {
     setState(() {
+      _tiempoPrestamo = 'Reciente';
       _bancoSeleccionado = null;
       _tipoCuentaSeleccionada = null;
       _nombreController.clear();
@@ -648,10 +755,8 @@ class _PrestamoFormCardState extends State<_PrestamoFormCard> {
   Future<bool> _mostrarConfirmacion(String titulo, String mensaje) async {
     final resultado = await showDialog<bool>(
       context: context,
-      builder: (context) => _DialogoConfirmacion(
-        titulo: titulo,
-        mensaje: mensaje,
-      ),
+      builder: (context) =>
+          _DialogoConfirmacion(titulo: titulo, mensaje: mensaje),
     );
     return resultado ?? false;
   }
@@ -659,7 +764,7 @@ class _PrestamoFormCardState extends State<_PrestamoFormCard> {
   Future<bool> _mostrarConfirmacionPrestamo({
     required double monto,
     required String nombrePrestatario,
-    required Map<String, dynamic> banco,
+    Map<String, dynamic>? banco,
   }) async {
     final resultado = await showDialog<bool>(
       context: context,
@@ -715,53 +820,79 @@ class _PrestamoFormCardState extends State<_PrestamoFormCard> {
 
     return _FormCard(
       title: 'Registrar préstamo',
-      subtitle: 'Completa todos los campos requeridos',
+      subtitle: 'Elige entre préstamo reciente o antiguo',
       isDark: isDark,
       child: Form(
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Tipo de cuenta (ARRIBA)
-            _CampoLabel(texto: 'Tipo de cuenta *', isDark: isDark),
+            _CampoLabel(texto: 'Tiempo del préstamo *', isDark: isDark),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
                   child: _ChipOpcion(
-                    texto: 'Corriente',
-                    seleccionado: _tipoCuentaSeleccionada == 'Corriente',
-                    onTap: () => _cambiarTipoCuenta('Corriente'),
+                    texto: 'Antiguo',
+                    seleccionado: _tiempoPrestamo == 'Antiguo',
+                    onTap: () => _cambiarTiempoPrestamo('Antiguo'),
                     isDark: isDark,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: _ChipOpcion(
-                    texto: 'Ahorro',
-                    seleccionado: _tipoCuentaSeleccionada == 'Ahorro',
-                    onTap: () => _cambiarTipoCuenta('Ahorro'),
+                    texto: 'Reciente',
+                    seleccionado: _tiempoPrestamo == 'Reciente',
+                    onTap: () => _cambiarTiempoPrestamo('Reciente'),
                     isDark: isDark,
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 14),
+            if (_tiempoPrestamo == 'Reciente') ...[
+              const SizedBox(height: 14),
 
-            // Banco (ABAJO)
-            _CampoLabel(texto: 'Banco *', isDark: isDark),
-            const SizedBox(height: 8),
-            _CampoSelector(
-              texto: _bancoSeleccionado == null
-                  ? 'Selecciona un banco'
-                  : _bancoSeleccionado!['nombre'],
-              icono: Icons.account_balance_rounded,
-              onTap: _seleccionarBanco,
-              tieneValor: _bancoSeleccionado != null,
-              isDark: isDark,
-              logo: _bancoSeleccionado?['logo'],
-            ),
+              _CampoLabel(texto: 'Tipo de cuenta *', isDark: isDark),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ChipOpcion(
+                      texto: 'Corriente',
+                      seleccionado: _tipoCuentaSeleccionada == 'Corriente',
+                      onTap: () => _cambiarTipoCuenta('Corriente'),
+                      isDark: isDark,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _ChipOpcion(
+                      texto: 'Ahorro',
+                      seleccionado: _tipoCuentaSeleccionada == 'Ahorro',
+                      onTap: () => _cambiarTipoCuenta('Ahorro'),
+                      isDark: isDark,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 14),
+
+              _CampoLabel(texto: 'Banco *', isDark: isDark),
+              const SizedBox(height: 8),
+              _CampoSelector(
+                texto: _bancoSeleccionado == null
+                    ? 'Selecciona un banco'
+                    : _bancoSeleccionado!['nombre'],
+                icono: Icons.account_balance_rounded,
+                onTap: _seleccionarBanco,
+                tieneValor: _bancoSeleccionado != null,
+                isDark: isDark,
+                logo: _bancoSeleccionado?['logo'],
+              ),
+            ],
 
             const SizedBox(height: 14),
 
@@ -804,7 +935,9 @@ class _PrestamoFormCardState extends State<_PrestamoFormCard> {
               controller: _montoController,
               hint: '0.00',
               isDark: isDark,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
               ],
@@ -861,8 +994,12 @@ class _PrestamoFormCardState extends State<_PrestamoFormCard> {
 
 class _HistorialTransferencias extends StatelessWidget {
   final FirebaseService firebaseService;
+  final ValueChanged<Map<String, dynamic>> onDelete;
 
-  const _HistorialTransferencias({required this.firebaseService});
+  const _HistorialTransferencias({
+    required this.firebaseService,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -888,8 +1025,9 @@ class _HistorialTransferencias extends StatelessWidget {
         }
 
         final transferencias = snapshot.data ?? [];
+        final ultimasTransferencias = transferencias.take(5).toList();
 
-        if (transferencias.isEmpty) {
+        if (ultimasTransferencias.isEmpty) {
           return const _EmptyState(
             mensaje: 'No hay transferencias registradas',
           );
@@ -899,12 +1037,13 @@ class _HistorialTransferencias extends StatelessWidget {
         final isDark = theme.brightness == Brightness.dark;
 
         return Column(
-          children: transferencias.map((tx) {
+          children: ultimasTransferencias.map((tx) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _TransferenciaTile(
                 transferencia: tx,
                 isDark: isDark,
+                onDelete: () => onDelete(tx),
               ),
             );
           }).toList(),
@@ -917,18 +1056,24 @@ class _HistorialTransferencias extends StatelessWidget {
 class _TransferenciaTile extends StatelessWidget {
   final Map<String, dynamic> transferencia;
   final bool isDark;
+  final VoidCallback onDelete;
 
   const _TransferenciaTile({
     required this.transferencia,
     required this.isDark,
+    required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final active = theme.colorScheme.primary;
-    final border = isDark ? Colors.white.withAlpha((0.10 * 255).toInt()) : Colors.black.withAlpha((0.06 * 255).toInt());
-    final bg = isDark ? Colors.white.withAlpha((0.06 * 255).toInt()) : Colors.black.withAlpha((0.03 * 255).toInt());
+    final border = isDark
+        ? Colors.white.withAlpha((0.10 * 255).toInt())
+        : Colors.black.withAlpha((0.06 * 255).toInt());
+    final bg = isDark
+        ? Colors.white.withAlpha((0.06 * 255).toInt())
+        : Colors.black.withAlpha((0.03 * 255).toInt());
 
     final monto = (transferencia['monto'] as num).toDouble();
     final descripcion = transferencia['descripcion'] as String;
@@ -939,100 +1084,179 @@ class _TransferenciaTile extends StatelessWidget {
     final aliasDestino = transferencia['bancoDestinoAlias'] as String?;
     final logoDestino = transferencia['bancoDestinoLogo'] as String;
 
+    final fecha = (transferencia['fecha'] as dynamic);
+    final fechaStr = fecha != null
+        ? DateFormat('dd/MM/yyyy HH:mm').format((fecha as dynamic).toDate())
+        : '—';
+
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: border),
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.swap_horiz_rounded,
+                size: 18,
+                color: active.withAlpha((0.80 * 255).toInt()),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Transferencia',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'S/ ${monto.toStringAsFixed(2)}',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: active,
+                ),
+              ),
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: onDelete,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: (isDark ? Colors.red : Colors.red).withValues(
+                      alpha: 0.12,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.delete_outline_rounded,
+                    size: 17,
+                    color: isDark ? Colors.red.shade300 : Colors.red.shade700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _BankPill(
+                  logo: logoOrigen,
+                  nombre: bancoOrigen,
+                  alias: aliasOrigen,
+                  active: active,
+                  isDark: isDark,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(
+                  Icons.arrow_forward_rounded,
+                  color: active.withAlpha((0.80 * 255).toInt()),
+                ),
+              ),
+              Expanded(
+                child: _BankPill(
+                  logo: logoDestino,
+                  nombre: bancoDestino,
+                  alias: aliasDestino,
+                  active: active,
+                  isDark: isDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            descripcion,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            fechaStr,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: isDark
+                  ? Colors.white.withAlpha((0.60 * 255).toInt())
+                  : Colors.black.withAlpha((0.50 * 255).toInt()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BankPill extends StatelessWidget {
+  final String logo;
+  final String nombre;
+  final String? alias;
+  final Color active;
+  final bool isDark;
+
+  const _BankPill({
+    required this.logo,
+    required this.nombre,
+    required this.alias,
+    required this.active,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final border = isDark
+        ? Colors.white.withAlpha((0.10 * 255).toInt())
+        : Colors.black.withAlpha((0.06 * 255).toInt());
+    final bg = isDark
+        ? Colors.white.withAlpha((0.05 * 255).toInt())
+        : Colors.black.withAlpha((0.03 * 255).toInt());
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
+      ),
       child: Row(
         children: [
-          // Banco origen
-          Column(
-            children: [
-              _LogoBanco(logo: logoOrigen, active: active, isDark: isDark),
-              const SizedBox(height: 4),
-              Text(
-                bancoOrigen,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                  color: isDark ? Colors.white.withAlpha((0.65 * 255).toInt()) : Colors.black.withAlpha((0.55 * 255).toInt()),
-                ),
-              ),
-              if (aliasOrigen != null && aliasOrigen.isNotEmpty)
-                Text(
-                  aliasOrigen,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 9,
-                    color: isDark ? Colors.white.withAlpha((0.50 * 255).toInt()) : Colors.black.withAlpha((0.45 * 255).toInt()),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(width: 10),
-          // Flecha
-          Column(
-            children: [
-              Icon(Icons.arrow_forward_rounded, color: active, size: 28),
-              const SizedBox(height: 2),
-              Icon(Icons.swap_horiz_rounded, color: active.withAlpha((0.60 * 255).toInt()), size: 18),
-            ],
-          ),
-          const SizedBox(width: 10),
-          // Banco destino
-          Column(
-            children: [
-              _LogoBanco(logo: logoDestino, active: active, isDark: isDark),
-              const SizedBox(height: 4),
-              Text(
-                bancoDestino,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                  color: isDark ? Colors.white.withAlpha((0.65 * 255).toInt()) : Colors.black.withAlpha((0.55 * 255).toInt()),
-                ),
-              ),
-              if (aliasDestino != null && aliasDestino.isNotEmpty)
-                Text(
-                  aliasDestino,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 9,
-                    color: isDark ? Colors.white.withAlpha((0.50 * 255).toInt()) : Colors.black.withAlpha((0.45 * 255).toInt()),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(width: 16),
-          // Info
+          _LogoBanco(logo: logo, active: active, isDark: isDark, size: 30),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Transferencia',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  descripcion,
+                  nombre,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'S/ ${monto.toStringAsFixed(2)}',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: active,
+                if (alias != null && alias!.isNotEmpty)
+                  Text(
+                    alias!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 11,
+                      color: isDark
+                          ? Colors.white.withAlpha((0.60 * 255).toInt())
+                          : Colors.black.withAlpha((0.50 * 255).toInt()),
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -1073,24 +1297,20 @@ class _HistorialPrestamos extends StatelessWidget {
         }
 
         final prestamos = snapshot.data ?? [];
+        final ultimosPrestamos = prestamos.take(5).toList();
 
-        if (prestamos.isEmpty) {
-          return const _EmptyState(
-            mensaje: 'No hay préstamos registrados',
-          );
+        if (ultimosPrestamos.isEmpty) {
+          return const _EmptyState(mensaje: 'No hay préstamos registrados');
         }
 
         final theme = Theme.of(context);
         final isDark = theme.brightness == Brightness.dark;
 
         return Column(
-          children: prestamos.map((prestamo) {
+          children: ultimosPrestamos.map((prestamo) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: _PrestamoTile(
-                prestamo: prestamo,
-                isDark: isDark,
-              ),
+              child: _PrestamoTile(prestamo: prestamo, isDark: isDark),
             );
           }).toList(),
         );
@@ -1103,23 +1323,26 @@ class _PrestamoTile extends StatelessWidget {
   final Map<String, dynamic> prestamo;
   final bool isDark;
 
-  const _PrestamoTile({
-    required this.prestamo,
-    required this.isDark,
-  });
+  const _PrestamoTile({required this.prestamo, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final active = theme.colorScheme.primary;
-    final border = isDark ? Colors.white.withAlpha((0.10 * 255).toInt()) : Colors.black.withAlpha((0.06 * 255).toInt());
-    final bg = isDark ? Colors.white.withAlpha((0.06 * 255).toInt()) : Colors.black.withAlpha((0.03 * 255).toInt());
+    final border = isDark
+        ? Colors.white.withAlpha((0.10 * 255).toInt())
+        : Colors.black.withAlpha((0.06 * 255).toInt());
+    final bg = isDark
+        ? Colors.white.withAlpha((0.06 * 255).toInt())
+        : Colors.black.withAlpha((0.03 * 255).toInt());
 
     final monto = (prestamo['monto'] as num).toDouble();
-    final bancoNombre = prestamo['bancoNombre'] as String;
-    final bancoLogo = prestamo['bancoLogo'] as String;
+    final bancoNombre =
+        (prestamo['bancoNombre'] as String?) ?? 'Sin banco asignado';
+    final bancoLogo = (prestamo['bancoLogo'] as String?) ?? '';
     final nombrePrestatario = prestamo['nombrePrestatario'] as String;
     final descripcion = prestamo['descripcion'] as String;
+    final tipoRegistro = (prestamo['tipoRegistro'] as String?) ?? 'reciente';
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1144,9 +1367,21 @@ class _PrestamoTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
+                  tipoRegistro == 'antiguo' ? 'Antiguo' : 'Reciente',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: tipoRegistro == 'antiguo'
+                        ? Colors.orange.shade600
+                        : Colors.green.shade600,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
                   bancoNombre,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDark ? Colors.white.withAlpha((0.65 * 255).toInt()) : Colors.black.withAlpha((0.55 * 255).toInt()),
+                    color: isDark
+                        ? Colors.white.withAlpha((0.65 * 255).toInt())
+                        : Colors.black.withAlpha((0.55 * 255).toInt()),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -1163,7 +1398,9 @@ class _PrestamoTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDark ? Colors.white.withAlpha((0.60 * 255).toInt()) : Colors.black.withAlpha((0.50 * 255).toInt()),
+                    color: isDark
+                        ? Colors.white.withAlpha((0.60 * 255).toInt())
+                        : Colors.black.withAlpha((0.50 * 255).toInt()),
                   ),
                 ),
               ],
@@ -1202,8 +1439,12 @@ class _SegmentPills extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final bg = isDark ? Colors.white.withAlpha((0.06 * 255).toInt()) : Colors.black.withAlpha((0.05 * 255).toInt());
-    final border = isDark ? Colors.white.withAlpha((0.10 * 255).toInt()) : Colors.black.withAlpha((0.06 * 255).toInt());
+    final bg = isDark
+        ? Colors.white.withAlpha((0.06 * 255).toInt())
+        : Colors.black.withAlpha((0.05 * 255).toInt());
+    final border = isDark
+        ? Colors.white.withAlpha((0.10 * 255).toInt())
+        : Colors.black.withAlpha((0.06 * 255).toInt());
 
     return Container(
       decoration: BoxDecoration(
@@ -1250,7 +1491,11 @@ class _PillButton extends StatelessWidget {
     final bg = selected
         ? active.withAlpha(((isDark ? 0.22 : 0.14) * 255).toInt())
         : Colors.transparent;
-    final fg = selected ? active : (isDark ? Colors.white.withAlpha((0.70 * 255).toInt()) : Colors.black.withAlpha((0.60 * 255).toInt()));
+    final fg = selected
+        ? active
+        : (isDark
+              ? Colors.white.withAlpha((0.70 * 255).toInt())
+              : Colors.black.withAlpha((0.60 * 255).toInt()));
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -1266,13 +1511,14 @@ class _PillButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 18, color: fg),
-            const SizedBox(width: 8),
+            FaIcon(icon, size: _minimalFaIconSize, color: fg),
+            const SizedBox(width: 7),
             Text(
               label,
               style: theme.textTheme.titleSmall?.copyWith(
                 color: fg,
                 fontWeight: FontWeight.w800,
+                fontSize: 13,
               ),
             ),
           ],
@@ -1298,8 +1544,12 @@ class _FormCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cardBg = isDark ? Colors.white.withAlpha((0.06 * 255).toInt()) : Colors.black.withAlpha((0.03 * 255).toInt());
-    final border = isDark ? Colors.white.withAlpha((0.10 * 255).toInt()) : Colors.black.withAlpha((0.06 * 255).toInt());
+    final cardBg = isDark
+        ? Colors.white.withAlpha((0.06 * 255).toInt())
+        : Colors.black.withAlpha((0.03 * 255).toInt());
+    final border = isDark
+        ? Colors.white.withAlpha((0.10 * 255).toInt())
+        : Colors.black.withAlpha((0.06 * 255).toInt());
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1329,7 +1579,9 @@ class _FormCard extends StatelessWidget {
           Text(
             subtitle,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: isDark ? Colors.white.withAlpha((0.65 * 255).toInt()) : Colors.black.withAlpha((0.55 * 255).toInt()),
+              color: isDark
+                  ? Colors.white.withAlpha((0.65 * 255).toInt())
+                  : Colors.black.withAlpha((0.55 * 255).toInt()),
             ),
           ),
           const SizedBox(height: 16),
@@ -1351,9 +1603,7 @@ class _CampoLabel extends StatelessWidget {
     final theme = Theme.of(context);
     return Text(
       texto,
-      style: theme.textTheme.labelLarge?.copyWith(
-        fontWeight: FontWeight.w800,
-      ),
+      style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
     );
   }
 }
@@ -1378,11 +1628,17 @@ class _CampoSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bg = isDark ? Colors.white.withAlpha((0.05 * 255).toInt()) : Colors.white;
-    final border = isDark ? Colors.white.withAlpha((0.10 * 255).toInt()) : Colors.black.withAlpha((0.06 * 255).toInt());
+    final bg = isDark
+        ? Colors.white.withAlpha((0.05 * 255).toInt())
+        : Colors.white;
+    final border = isDark
+        ? Colors.white.withAlpha((0.10 * 255).toInt())
+        : Colors.black.withAlpha((0.06 * 255).toInt());
     final textColor = tieneValor
         ? (isDark ? Colors.white : Colors.black87)
-        : (isDark ? Colors.white.withAlpha((0.55 * 255).toInt()) : Colors.black.withAlpha((0.45 * 255).toInt()));
+        : (isDark
+              ? Colors.white.withAlpha((0.55 * 255).toInt())
+              : Colors.black.withAlpha((0.45 * 255).toInt()));
 
     return InkWell(
       onTap: onTap,
@@ -1404,7 +1660,9 @@ class _CampoSelector extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: theme.colorScheme.primary.withAlpha((0.35 * 255).toInt()),
+                    color: theme.colorScheme.primary.withAlpha(
+                      (0.35 * 255).toInt(),
+                    ),
                     width: 1.5,
                   ),
                 ),
@@ -1460,8 +1718,12 @@ class _CampoTexto extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bg = isDark ? Colors.white.withAlpha((0.05 * 255).toInt()) : Colors.white;
-    final border = isDark ? Colors.white.withAlpha((0.10 * 255).toInt()) : Colors.black.withAlpha((0.06 * 255).toInt());
+    final bg = isDark
+        ? Colors.white.withAlpha((0.05 * 255).toInt())
+        : Colors.white;
+    final border = isDark
+        ? Colors.white.withAlpha((0.10 * 255).toInt())
+        : Colors.black.withAlpha((0.06 * 255).toInt());
 
     return TextFormField(
       controller: controller,
@@ -1489,7 +1751,10 @@ class _CampoTexto extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: Colors.red.shade600),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
       ),
     );
   }
@@ -1514,11 +1779,17 @@ class _ChipOpcion extends StatelessWidget {
     final active = theme.colorScheme.primary;
     final bg = seleccionado
         ? active.withAlpha(((isDark ? 0.22 : 0.14) * 255).toInt())
-        : (isDark ? Colors.white.withAlpha((0.05 * 255).toInt()) : Colors.white);
+        : (isDark
+              ? Colors.white.withAlpha((0.05 * 255).toInt())
+              : Colors.white);
     final border = seleccionado
         ? active
-        : (isDark ? Colors.white.withAlpha((0.10 * 255).toInt()) : Colors.black.withAlpha((0.06 * 255).toInt()));
-    final textColor = seleccionado ? active : (isDark ? Colors.white70 : Colors.black87);
+        : (isDark
+              ? Colors.white.withAlpha((0.10 * 255).toInt())
+              : Colors.black.withAlpha((0.06 * 255).toInt()));
+    final textColor = seleccionado
+        ? active
+        : (isDark ? Colors.white70 : Colors.black87);
 
     return InkWell(
       onTap: onTap,
@@ -1572,7 +1843,9 @@ class _SelectorBancos extends StatelessWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withAlpha((0.20 * 255).toInt()) : Colors.black.withAlpha((0.10 * 255).toInt()),
+              color: isDark
+                  ? Colors.white.withAlpha((0.20 * 255).toInt())
+                  : Colors.black.withAlpha((0.10 * 255).toInt()),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -1623,8 +1896,12 @@ class _BancoItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final active = theme.colorScheme.primary;
-    final border = isDark ? Colors.white.withAlpha((0.10 * 255).toInt()) : Colors.black.withAlpha((0.06 * 255).toInt());
-    final bg = isDark ? Colors.white.withAlpha((0.05 * 255).toInt()) : Colors.black.withAlpha((0.02 * 255).toInt());
+    final border = isDark
+        ? Colors.white.withAlpha((0.10 * 255).toInt())
+        : Colors.black.withAlpha((0.06 * 255).toInt());
+    final bg = isDark
+        ? Colors.white.withAlpha((0.05 * 255).toInt())
+        : Colors.black.withAlpha((0.02 * 255).toInt());
 
     final saldo = (banco['saldo'] as num).toDouble();
 
@@ -1656,11 +1933,8 @@ class _BancoItem extends StatelessWidget {
                   child: Image.network(
                     banco['logo'],
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Icon(
-                      Icons.account_balance,
-                      color: active,
-                      size: 22,
-                    ),
+                    errorBuilder: (_, __, ___) =>
+                        Icon(Icons.account_balance, color: active, size: 22),
                   ),
                 ),
               ),
@@ -1677,11 +1951,14 @@ class _BancoItem extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      (banco['alias'] != null && (banco['alias'] as String).isNotEmpty)
+                      (banco['alias'] != null &&
+                              (banco['alias'] as String).isNotEmpty)
                           ? '${banco['alias']} • ${banco['tipoCuenta']}'
                           : banco['tipoCuenta'],
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: isDark ? Colors.white.withAlpha((0.60 * 255).toInt()) : Colors.black.withAlpha((0.50 * 255).toInt()),
+                        color: isDark
+                            ? Colors.white.withAlpha((0.60 * 255).toInt())
+                            : Colors.black.withAlpha((0.50 * 255).toInt()),
                       ),
                     ),
                   ],
@@ -1702,7 +1979,9 @@ class _BancoItem extends StatelessWidget {
                   Text(
                     'Saldo',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: isDark ? Colors.white.withAlpha((0.50 * 255).toInt()) : Colors.black.withAlpha((0.45 * 255).toInt()),
+                      color: isDark
+                          ? Colors.white.withAlpha((0.50 * 255).toInt())
+                          : Colors.black.withAlpha((0.45 * 255).toInt()),
                     ),
                   ),
                 ],
@@ -1718,30 +1997,58 @@ class _BancoItem extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   final String title;
   final String subtitle;
+  final IconData icon;
 
   const _SectionHeader({
     required this.title,
     required this.subtitle,
+    required this.icon,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final iconBg = isDark
+        ? Colors.white.withAlpha((0.10 * 255).toInt())
+        : theme.colorScheme.primary.withAlpha((0.12 * 255).toInt());
+    final iconFg = isDark
+        ? Colors.white.withAlpha((0.92 * 255).toInt())
+        : theme.colorScheme.primary;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w900,
-          ),
+        Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: FaIcon(icon, size: _minimalFaIconSize, color: iconFg),
+            ),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 4),
         Text(
           subtitle,
           style: theme.textTheme.bodySmall?.copyWith(
-            color: isDark ? Colors.white.withAlpha((0.60 * 255).toInt()) : Colors.black.withAlpha((0.55 * 255).toInt()),
+            color: isDark
+                ? Colors.white.withAlpha((0.60 * 255).toInt())
+                : Colors.black.withAlpha((0.55 * 255).toInt()),
           ),
         ),
       ],
@@ -1769,17 +2076,17 @@ class _LogoBanco extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: active.withAlpha((0.35 * 255).toInt()), width: 2),
+        border: Border.all(
+          color: active.withAlpha((0.35 * 255).toInt()),
+          width: 2,
+        ),
       ),
       child: ClipOval(
         child: Image.network(
           logo,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Icon(
-            Icons.account_balance,
-            color: active,
-            size: size * 0.5,
-          ),
+          errorBuilder: (_, __, ___) =>
+              Icon(Icons.account_balance, color: active, size: size * 0.5),
         ),
       ),
     );
@@ -1804,14 +2111,18 @@ class _EmptyState extends StatelessWidget {
             Icon(
               Icons.info_outline_rounded,
               size: 64,
-              color: isDark ? Colors.white.withAlpha((0.30 * 255).toInt()) : Colors.black.withAlpha((0.20 * 255).toInt()),
+              color: isDark
+                  ? Colors.white.withAlpha((0.30 * 255).toInt())
+                  : Colors.black.withAlpha((0.20 * 255).toInt()),
             ),
             const SizedBox(height: 16),
             Text(
               mensaje,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyLarge?.copyWith(
-                color: isDark ? Colors.white.withAlpha((0.60 * 255).toInt()) : Colors.black.withAlpha((0.50 * 255).toInt()),
+                color: isDark
+                    ? Colors.white.withAlpha((0.60 * 255).toInt())
+                    : Colors.black.withAlpha((0.50 * 255).toInt()),
               ),
             ),
           ],
@@ -1825,10 +2136,7 @@ class _DialogoConfirmacion extends StatelessWidget {
   final String titulo;
   final String mensaje;
 
-  const _DialogoConfirmacion({
-    required this.titulo,
-    required this.mensaje,
-  });
+  const _DialogoConfirmacion({required this.titulo, required this.mensaje});
 
   @override
   Widget build(BuildContext context) {
@@ -1843,10 +2151,7 @@ class _DialogoConfirmacion extends StatelessWidget {
           fontWeight: FontWeight.w900,
         ),
       ),
-      content: Text(
-        mensaje,
-        style: theme.textTheme.bodyLarge,
-      ),
+      content: Text(mensaje, style: theme.textTheme.bodyLarge),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       actions: [
         TextButton(
@@ -2003,7 +2308,7 @@ class _DialogoConfirmacionTransferencia extends StatelessWidget {
 class _DialogoConfirmacionPrestamo extends StatelessWidget {
   final double monto;
   final String nombrePrestatario;
-  final Map<String, dynamic> banco;
+  final Map<String, dynamic>? banco;
 
   const _DialogoConfirmacionPrestamo({
     required this.monto,
@@ -2041,20 +2346,23 @@ class _DialogoConfirmacionPrestamo extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
-          // Logo del banco
-          _LogoConNombre(
-            logo: banco['logo'],
-            nombre: banco['nombre'],
-            active: active,
-            isDark: isDark,
-          ),
-          const SizedBox(height: 16),
+          if (banco != null) ...[
+            _LogoConNombre(
+              logo: banco!['logo'],
+              nombre: banco!['nombre'],
+              active: active,
+              isDark: isDark,
+            ),
+            const SizedBox(height: 16),
+          ],
 
           // Nombre de la persona
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withAlpha((0.08 * 255).toInt()) : Colors.black.withAlpha((0.04 * 255).toInt()),
+              color: isDark
+                  ? Colors.white.withAlpha((0.08 * 255).toInt())
+                  : Colors.black.withAlpha((0.04 * 255).toInt()),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -2063,7 +2371,9 @@ class _DialogoConfirmacionPrestamo extends StatelessWidget {
                 Icon(
                   Icons.person_outline_rounded,
                   size: 20,
-                  color: isDark ? Colors.white.withAlpha((0.70 * 255).toInt()) : Colors.black.withAlpha((0.60 * 255).toInt()),
+                  color: isDark
+                      ? Colors.white.withAlpha((0.70 * 255).toInt())
+                      : Colors.black.withAlpha((0.60 * 255).toInt()),
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -2138,17 +2448,17 @@ class _LogoConNombre extends StatelessWidget {
           height: 60,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: active.withAlpha((0.35 * 255).toInt()), width: 2),
+            border: Border.all(
+              color: active.withAlpha((0.35 * 255).toInt()),
+              width: 2,
+            ),
           ),
           child: ClipOval(
             child: Image.network(
               logo,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Icon(
-                Icons.account_balance,
-                color: active,
-                size: 30,
-              ),
+              errorBuilder: (_, __, ___) =>
+                  Icon(Icons.account_balance, color: active, size: 30),
             ),
           ),
         ),
@@ -2157,7 +2467,9 @@ class _LogoConNombre extends StatelessWidget {
           nombre,
           style: theme.textTheme.labelLarge?.copyWith(
             fontWeight: FontWeight.w700,
-            color: isDark ? Colors.white.withAlpha((0.85 * 255).toInt()) : Colors.black.withAlpha((0.75 * 255).toInt()),
+            color: isDark
+                ? Colors.white.withAlpha((0.85 * 255).toInt())
+                : Colors.black.withAlpha((0.75 * 255).toInt()),
           ),
           textAlign: TextAlign.center,
         ),

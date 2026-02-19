@@ -1,11 +1,10 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'home_view.dart';
 import 'registro_view.dart';
 import 'movimientos_view.dart';
-import 'parametros_view.dart';
-import '../utils/theme_switch.dart';
 import '../widgets/voucher_notification_listener.dart';
 
 class MainNavView extends StatefulWidget {
@@ -22,7 +21,6 @@ class _MainNavViewState extends State<MainNavView> {
     HomeView(),
     RegistroView(),
     MovimientosView(),
-    ParametrosView(),
   ];
 
   @override
@@ -32,22 +30,11 @@ class _MainNavViewState extends State<MainNavView> {
 
     return VoucherNotificationListener(
       child: Scaffold(
-        extendBody: true,
-        body: Stack(
-          children: [
-            // Mantiene el estado de cada tab
-            IndexedStack(
-              index: _selectedIndex,
-              children: _pages,
-            ),
-
-            // Switch siempre visible
-            const Positioned(
-              top: 24,
-              right: 24,
-              child: ThemeSwitch(),
-            ),
-          ],
+        extendBody: false,
+        body: MediaQuery.removePadding(
+          context: context,
+          removeTop: true,
+          child: IndexedStack(index: _selectedIndex, children: _pages),
         ),
 
         // Nav moderno flotante con blur + animación + indicador
@@ -77,15 +64,20 @@ class _ModernBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = isDark ? const Color(0xFF111318) : Colors.white.withAlpha((0.85 * 255).toInt());
-    final border = isDark ? Colors.white.withAlpha((0.08 * 255).toInt()) : Colors.black.withAlpha((0.06 * 255).toInt());
-    final inactive = isDark ? Colors.white.withAlpha((0.55 * 255).toInt()) : Colors.black.withAlpha((0.45 * 255).toInt());
+    final bg = isDark
+        ? const Color(0xFF111318)
+        : Colors.white.withAlpha((0.92 * 255).toInt());
+    final border = isDark
+        ? Colors.white.withAlpha((0.08 * 255).toInt())
+        : Colors.black.withAlpha((0.06 * 255).toInt());
+    final inactive = isDark
+        ? Colors.white.withAlpha((0.55 * 255).toInt())
+        : Colors.black.withAlpha((0.45 * 255).toInt());
 
     final items = const <_NavItemData>[
-      _NavItemData(icon: Icons.home_rounded),
-      _NavItemData(icon: Icons.app_registration_rounded),
-      _NavItemData(icon: Icons.swap_horiz_rounded),
-      _NavItemData(icon: Icons.tune_rounded),
+      _NavItemData(icon: FontAwesomeIcons.house),
+      _NavItemData(icon: FontAwesomeIcons.squarePlus),
+      _NavItemData(icon: FontAwesomeIcons.rightLeft),
     ];
 
     return SafeArea(
@@ -95,18 +87,20 @@ class _ModernBottomNav extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(28),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
             child: Container(
-              height: 70,
+              height: 66,
               decoration: BoxDecoration(
                 color: bg,
                 borderRadius: BorderRadius.circular(28),
                 border: Border.all(color: border),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withAlpha(((isDark ? 0.35 : 0.12) * 255).toInt()),
-                    blurRadius: 18,
-                    offset: const Offset(0, 10),
+                    color: Colors.black.withAlpha(
+                      ((isDark ? 0.28 : 0.10) * 255).toInt(),
+                    ),
+                    blurRadius: 14,
+                    offset: const Offset(0, 8),
                   ),
                 ],
               ),
@@ -157,9 +151,11 @@ class _NavButton extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: selected ? activeColor.withAlpha((0.14 * 255).toInt()) : Colors.transparent,
+            color: selected
+                ? activeColor.withAlpha((0.10 * 255).toInt())
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(18),
           ),
           child: Column(
@@ -168,21 +164,21 @@ class _NavButton extends StatelessWidget {
               AnimatedScale(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutBack,
-                scale: selected ? 1.10 : 1.0,
-                child: Icon(
+                scale: selected ? 1.06 : 1.0,
+                child: FaIcon(
                   icon,
-                  size: 28,
+                  size: 19,
                   color: selected ? activeColor : inactiveColor,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 5),
 
               // Indicador (dot) del tab activo
               AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOut,
-                height: 6,
-                width: selected ? 18 : 6,
+                height: 5,
+                width: selected ? 14 : 5,
                 decoration: BoxDecoration(
                   color: selected ? activeColor : Colors.transparent,
                   borderRadius: BorderRadius.circular(99),

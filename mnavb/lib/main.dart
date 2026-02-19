@@ -1,5 +1,5 @@
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:provider/provider.dart';
@@ -22,54 +22,75 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Nombre de la tarea del WorkManager
 const taskProcessVoucher = "processVoucher";
 
+Future<void> _enableImmersiveMode() async {
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+    ),
+  );
+}
+
+Future<void> _safeNotification(Future<void> Function() action) async {
+  try {
+    await action();
+  } catch (e) {
+    print('⚠️ Notificación no disponible en este contexto: $e');
+  }
+}
+
 /// Callback dispatcher para WorkManager
 /// Este se ejecuta en un isolate separado (background)
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     try {
+      if (task != taskProcessVoucher) {
+        print('ℹ️ WorkManager: tarea ignorada: $task');
+        return Future.value(true);
+      }
+
       print('📱 WorkManager: Iniciando tarea de procesamiento de voucher');
-      
+
       // IMPORTANTE: Inicializar Firebase en background
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
-      
-      // Inicializar notificaciones
-      await SystemNotifications.init();
-      
+
+      // Inicializar notificaciones (si están disponibles en este isolate)
+      await _safeNotification(() => SystemNotifications.init());
+
       // Obtener ID de notificación único
-      final notifId = (inputData?['notifId'] as int?) ?? 
+      final notifId =
+          (inputData?['notifId'] as int?) ??
           DateTime.now().millisecondsSinceEpoch.remainder(100000);
-      
-      // Mostrar notificación de "Procesando..."
-      await SystemNotifications.showProcessing(notifId);
-      
+
       // Obtener URI del voucher
       final uri = inputData?['uri'] as String?;
-      if (uri == null) {
+      if (uri == null || uri.isEmpty) {
         throw Exception('URI del voucher no proporcionado');
       }
-      
+
       print('📄 Procesando voucher desde URI: $uri');
-      
+
       // Procesar el voucher con OCR
       final voucherService = VoucherProcessingService();
       final result = await voucherService.processSharedUri(uri);
-      
+
       print('✅ Voucher procesado: ${result.tipo} - S/ ${result.monto}');
-      
+
       // Obtener UID del usuario desde SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       final userId = prefs.getString('saved_uid');
-      
+
       if (userId == null) {
         throw Exception('Usuario no autenticado. Inicia sesión en la app.');
       }
-      
+
       // Guardar en Firestore
       final firebaseService = FirebaseService();
-      
+
       // Buscar o crear el banco
       String? bancoId = await _buscarOCrearBanco(
         firebaseService,
@@ -78,11 +99,11 @@ void callbackDispatcher() {
         result.bancoLogo,
         result.tipoCuenta,
       );
-      
+
       if (bancoId == null) {
         throw Exception('No se pudo obtener o crear el banco');
       }
-      
+
       // Registrar la transacción
       if (result.tipo == 'gasto') {
         await firebaseService.registrarGastoConUserId(
@@ -95,10 +116,12 @@ void callbackDispatcher() {
           monto: result.monto,
           fecha: result.fecha,
         );
-        
-        await SystemNotifications.showSuccess(
-          notifId,
-          'Gasto registrado: S/ ${result.monto.toStringAsFixed(2)}${result.descripcion != 'Sin descripción' ? ' - ${result.descripcion}' : ''}',
+
+        await _safeNotification(
+          () => SystemNotifications.showSuccess(
+            notifId,
+            'Gasto registrado: S/ ${result.monto.toStringAsFixed(2)}${result.descripcion != 'Sin descripción' ? ' - ${result.descripcion}' : ''}',
+          ),
         );
       } else {
         await firebaseService.registrarIngresoConUserId(
@@ -111,28 +134,32 @@ void callbackDispatcher() {
           monto: result.monto,
           fecha: result.fecha,
         );
-        
-        await SystemNotifications.showSuccess(
-          notifId,
-          'Ingreso registrado: S/ ${result.monto.toStringAsFixed(2)}${result.descripcion != 'Sin descripción' ? ' - ${result.descripcion}' : ''}',
+
+        await _safeNotification(
+          () => SystemNotifications.showSuccess(
+            notifId,
+            'Ingreso registrado: S/ ${result.monto.toStringAsFixed(2)}${result.descripcion != 'Sin descripción' ? ' - ${result.descripcion}' : ''}',
+          ),
         );
       }
-      
+
       print('💾 Transacción guardada en Firestore');
-      
+
       return Future.value(true);
     } catch (e) {
       print('❌ Error en background: $e');
-      
+
       final notifId = (inputData?['notifId'] as int?) ?? 9999;
-      await SystemNotifications.showError(
-        notifId,
-        e.toString().replaceAll('Exception: ', ''),
+      await _safeNotification(
+        () => SystemNotifications.showError(
+          notifId,
+          e.toString().replaceAll('Exception: ', ''),
+        ),
       );
-      
-      // IMPORTANTE: Retornar false marca la tarea como FAILURE (no se reintentará)
-      // Si retornamos true, WorkManager intentaría ejecutar de nuevo
-      return Future.value(false);
+
+      // IMPORTANTE: retornar true evita reintentos automáticos de WorkManager.
+      // Ya notificamos el error al usuario y no queremos re-disparar la misma tarea.
+      return Future.value(true);
     }
   });
 }
@@ -148,13 +175,14 @@ Future<String?> _buscarOCrearBanco(
   try {
     // Intentar buscar el banco existente
     final bancos = await firebaseService.getBancosListConUserId(userId);
-    
+
     for (var banco in bancos) {
-      if (banco['nombre'].toString().toLowerCase() == nombreBanco.toLowerCase()) {
+      if (banco['nombre'].toString().toLowerCase() ==
+          nombreBanco.toLowerCase()) {
         return banco['id'] as String;
       }
     }
-    
+
     // Si no existe, crear uno nuevo
     return await firebaseService.agregarBancoConUserId(
       userId: userId,
@@ -171,30 +199,33 @@ Future<String?> _buscarOCrearBanco(
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  // Pantalla completa: oculta barras del sistema
+  await _enableImmersiveMode();
+
   // Inicializar Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
   // Inicializar notificaciones del sistema
   await SystemNotifications.init();
-  
+
   // Inicializar WorkManager
   await Workmanager().initialize(
     callbackDispatcher,
     isInDebugMode: false, // Cambiar a true para ver logs detallados
   );
-  
-  // IMPORTANTE: Cancelar trabajos antiguos/pendientes para evitar ejecuciones fantasma
+
+  // Limpiar trabajos pendientes antiguos para evitar reintentos fantasma
   await Workmanager().cancelAll();
-  print('🧹 Trabajos antiguos de WorkManager cancelados');
-  
-  // Inicializar servicio para encolar vouchers compartidos
+
+  // Limpiar tarea periódica antigua de parámetros si aún existe en el dispositivo
+  await Workmanager().cancelByUniqueName('monitor_parametros_periodic');
+
+  // Inicializar servicio para encolar vouchers compartidos (lo antes posible)
   await ShareEnqueueService.init();
-  
+
   print('🚀 WorkManager inicializado correctamente');
-  
+
   runApp(
     MultiProvider(
       providers: [
@@ -207,8 +238,33 @@ Future<void> main() async {
   );
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _enableImmersiveMode();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _enableImmersiveMode();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -234,10 +290,10 @@ class MyApp extends StatelessWidget {
 
 // ...existing code...
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
+// This widget is the home page of your application. It is stateful, meaning
+// that it has a State object (defined below) that contains fields that affect
+// how it looks.
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
+// This class is the configuration for the state. It holds the values (in this
+// case the title) provided by the parent (in this case the App widget) and
 // ...existing code...

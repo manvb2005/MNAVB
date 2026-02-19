@@ -30,6 +30,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Solo incluye recursos de texto en inglés y español (OCR latino)
+        resConfigs("en", "es")
     }
 
     buildTypes {

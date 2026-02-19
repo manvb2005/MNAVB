@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import '../services/firebase_service.dart';
+
+const double _minimalFaIconSize = 14;
 
 class RegistroView extends StatefulWidget {
   const RegistroView({super.key});
@@ -13,6 +16,74 @@ class RegistroView extends StatefulWidget {
 class _RegistroViewState extends State<RegistroView> {
   final _firebaseService = FirebaseService();
   int _tabIndex = 0; // 0 = Ingreso, 1 = Gasto
+
+  Future<void> _eliminarRegistro({
+    required Map<String, dynamic> registro,
+    required bool isIngreso,
+  }) async {
+    final registroId = registro['id'] as String?;
+    if (registroId == null || registroId.isEmpty) {
+      _mostrarError('No se pudo identificar el registro a eliminar');
+      return;
+    }
+
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (_) => _DialogoConfirmacionEliminacion(isIngreso: isIngreso),
+    );
+
+    if (confirmado != true) return;
+
+    try {
+      if (isIngreso) {
+        await _firebaseService.eliminarIngreso(ingresoId: registroId);
+      } else {
+        await _firebaseService.eliminarGasto(gastoId: registroId);
+      }
+
+      if (!mounted) return;
+      _mostrarExito(isIngreso ? 'Ingreso eliminado' : 'Gasto eliminado');
+    } catch (e) {
+      if (!mounted) return;
+      _mostrarError(e.toString().replaceAll('Exception: ', ''));
+    }
+  }
+
+  void _mostrarError(String mensaje) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(mensaje)),
+          ],
+        ),
+        backgroundColor: Colors.red.shade600,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  void _mostrarExito(String mensaje) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(mensaje)),
+          ],
+        ),
+        backgroundColor: Colors.green.shade600,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,8 +132,13 @@ class _RegistroViewState extends State<RegistroView> {
                     const SizedBox(height: 16),
 
                     _SectionHeader(
-                      title: _tabIndex == 0 ? 'Historial de Ingresos' : 'Historial de Gastos',
-                      subtitle: 'Últimos registros del mes',
+                      title: _tabIndex == 0
+                          ? 'Historial de Ingresos'
+                          : 'Historial de Gastos',
+                      subtitle: 'Últimos 5 registros del mes',
+                      icon: _tabIndex == 0
+                          ? FontAwesomeIcons.clockRotateLeft
+                          : FontAwesomeIcons.fileLines,
                     ),
 
                     const SizedBox(height: 10),
@@ -73,7 +149,8 @@ class _RegistroViewState extends State<RegistroView> {
                           ? _firebaseService.getIngresosStream()
                           : _firebaseService.getGastosStream(),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
                           return const Center(
                             child: Padding(
                               padding: EdgeInsets.all(32),
@@ -93,20 +170,23 @@ class _RegistroViewState extends State<RegistroView> {
                         }
 
                         final registros = snapshot.data ?? [];
+                        final ultimosRegistros = registros.take(5).toList();
 
-                        if (registros.isEmpty) {
-                          return _EmptyState(
-                            isIngreso: _tabIndex == 0,
-                          );
+                        if (ultimosRegistros.isEmpty) {
+                          return _EmptyState(isIngreso: _tabIndex == 0);
                         }
 
                         return Column(
-                          children: registros.map((registro) {
+                          children: ultimosRegistros.map((registro) {
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 10),
                               child: _RegistroTile(
                                 registro: registro,
                                 isIngreso: _tabIndex == 0,
+                                onDelete: () => _eliminarRegistro(
+                                  registro: registro,
+                                  isIngreso: _tabIndex == 0,
+                                ),
                               ),
                             );
                           }).toList(),
@@ -129,10 +209,7 @@ class _RegistroViewState extends State<RegistroView> {
 class _IngresoFormCard extends StatefulWidget {
   final FirebaseService firebaseService;
 
-  const _IngresoFormCard({
-    super.key,
-    required this.firebaseService,
-  });
+  const _IngresoFormCard({super.key, required this.firebaseService});
 
   @override
   State<_IngresoFormCard> createState() => _IngresoFormCardState();
@@ -166,7 +243,9 @@ class _IngresoFormCardState extends State<_IngresoFormCard> {
     if (!mounted) return;
 
     if (bancos.isEmpty) {
-      _mostrarError('No tienes bancos registrados. Agrega uno primero desde la sección Bancos.');
+      _mostrarError(
+        'No tienes bancos registrados. Agrega uno primero desde la sección Bancos.',
+      );
       return;
     }
 
@@ -176,7 +255,9 @@ class _IngresoFormCardState extends State<_IngresoFormCard> {
     }).toList();
 
     if (bancosFiltrados.isEmpty) {
-      _mostrarError('No tienes bancos del tipo $_tipoCuentaSeleccionada. Agrega uno desde la sección Bancos.');
+      _mostrarError(
+        'No tienes bancos del tipo $_tipoCuentaSeleccionada. Agrega uno desde la sección Bancos.',
+      );
       return;
     }
 
@@ -402,7 +483,9 @@ class _IngresoFormCardState extends State<_IngresoFormCard> {
               hint: '0.00',
               prefijo: 'S/ ',
               teclado: const TextInputType.numberWithOptions(decimal: true),
-              formatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+              formatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+              ],
               isDark: isDark,
               validator: (v) {
                 if (v == null || v.trim().isEmpty) return 'Campo requerido';
@@ -464,10 +547,7 @@ class _IngresoFormCardState extends State<_IngresoFormCard> {
 class _GastoFormCard extends StatefulWidget {
   final FirebaseService firebaseService;
 
-  const _GastoFormCard({
-    super.key,
-    required this.firebaseService,
-  });
+  const _GastoFormCard({super.key, required this.firebaseService});
 
   @override
   State<_GastoFormCard> createState() => _GastoFormCardState();
@@ -501,7 +581,9 @@ class _GastoFormCardState extends State<_GastoFormCard> {
     if (!mounted) return;
 
     if (bancos.isEmpty) {
-      _mostrarError('No tienes bancos registrados. Agrega uno primero desde la sección Bancos.');
+      _mostrarError(
+        'No tienes bancos registrados. Agrega uno primero desde la sección Bancos.',
+      );
       return;
     }
 
@@ -511,7 +593,9 @@ class _GastoFormCardState extends State<_GastoFormCard> {
     }).toList();
 
     if (bancosFiltrados.isEmpty) {
-      _mostrarError('No tienes bancos del tipo $_tipoCuentaSeleccionada. Agrega uno desde la sección Bancos.');
+      _mostrarError(
+        'No tienes bancos del tipo $_tipoCuentaSeleccionada. Agrega uno desde la sección Bancos.',
+      );
       return;
     }
 
@@ -631,10 +715,8 @@ class _GastoFormCardState extends State<_GastoFormCard> {
   Future<bool> _mostrarConfirmacion(String titulo, String mensaje) async {
     final resultado = await showDialog<bool>(
       context: context,
-      builder: (context) => _DialogoConfirmacion(
-        titulo: titulo,
-        mensaje: mensaje,
-      ),
+      builder: (context) =>
+          _DialogoConfirmacion(titulo: titulo, mensaje: mensaje),
     );
     return resultado ?? false;
   }
@@ -756,7 +838,9 @@ class _GastoFormCardState extends State<_GastoFormCard> {
               hint: '0.00',
               prefijo: 'S/ ',
               teclado: const TextInputType.numberWithOptions(decimal: true),
-              formatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+              formatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+              ],
               isDark: isDark,
               validator: (v) {
                 if (v == null || v.trim().isEmpty) return 'Campo requerido';
@@ -819,10 +903,7 @@ class _SegmentPills extends StatelessWidget {
   final int value;
   final ValueChanged<int> onChanged;
 
-  const _SegmentPills({
-    required this.value,
-    required this.onChanged,
-  });
+  const _SegmentPills({required this.value, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -849,7 +930,7 @@ class _SegmentPills extends StatelessWidget {
             child: _PillButton(
               selected: value == 0,
               label: 'Ingreso',
-              icon: Icons.arrow_downward_rounded,
+              icon: FontAwesomeIcons.arrowDown,
               onTap: () => onChanged(0),
             ),
           ),
@@ -858,7 +939,7 @@ class _SegmentPills extends StatelessWidget {
             child: _PillButton(
               selected: value == 1,
               label: 'Gasto',
-              icon: Icons.arrow_upward_rounded,
+              icon: FontAwesomeIcons.arrowUp,
               onTap: () => onChanged(1),
             ),
           ),
@@ -894,8 +975,8 @@ class _PillButton extends StatelessWidget {
     final fg = selected
         ? active
         : (isDark
-            ? Colors.white.withValues(alpha: 0.70)
-            : Colors.black.withValues(alpha: 0.60));
+              ? Colors.white.withValues(alpha: 0.70)
+              : Colors.black.withValues(alpha: 0.60));
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -910,13 +991,14 @@ class _PillButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 18, color: fg),
-            const SizedBox(width: 8),
+            FaIcon(icon, size: _minimalFaIconSize, color: fg),
+            const SizedBox(width: 7),
             Text(
               label,
               style: theme.textTheme.titleSmall?.copyWith(
                 color: fg,
                 fontWeight: FontWeight.w800,
+                fontSize: 13,
               ),
             ),
           ],
@@ -994,19 +1076,14 @@ class _CampoLabel extends StatelessWidget {
   final String texto;
   final bool isDark;
 
-  const _CampoLabel({
-    required this.texto,
-    required this.isDark,
-  });
+  const _CampoLabel({required this.texto, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Text(
       texto,
-      style: theme.textTheme.labelLarge?.copyWith(
-        fontWeight: FontWeight.w800,
-      ),
+      style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
     );
   }
 }
@@ -1031,19 +1108,17 @@ class _CampoSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bg = isDark
-        ? Colors.white.withValues(alpha: 0.05)
-        : Colors.white;
+    final bg = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white;
     final border = isDark
         ? Colors.white.withValues(alpha: 0.10)
         : Colors.black.withValues(alpha: 0.06);
     final fg = tieneValor
         ? (isDark
-            ? Colors.white.withValues(alpha: 0.88)
-            : Colors.black.withValues(alpha: 0.78))
+              ? Colors.white.withValues(alpha: 0.88)
+              : Colors.black.withValues(alpha: 0.78))
         : (isDark
-            ? Colors.white.withValues(alpha: 0.55)
-            : Colors.black.withValues(alpha: 0.45));
+              ? Colors.white.withValues(alpha: 0.55)
+              : Colors.black.withValues(alpha: 0.45));
 
     return InkWell(
       onTap: onTap,
@@ -1115,20 +1190,20 @@ class _ChipOpcion extends StatelessWidget {
     final bg = seleccionado
         ? accent.withValues(alpha: isDark ? 0.18 : 0.12)
         : (isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : Colors.black.withValues(alpha: 0.04));
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.04));
 
     final border = seleccionado
         ? accent.withValues(alpha: 0.40)
         : (isDark
-            ? Colors.white.withValues(alpha: 0.10)
-            : Colors.black.withValues(alpha: 0.06));
+              ? Colors.white.withValues(alpha: 0.10)
+              : Colors.black.withValues(alpha: 0.06));
 
     final fg = seleccionado
         ? accent
         : (isDark
-            ? Colors.white.withValues(alpha: 0.75)
-            : Colors.black.withValues(alpha: 0.70));
+              ? Colors.white.withValues(alpha: 0.75)
+              : Colors.black.withValues(alpha: 0.70));
 
     return InkWell(
       onTap: onTap,
@@ -1138,18 +1213,12 @@ class _ChipOpcion extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: border,
-            width: seleccionado ? 2 : 1,
-          ),
+          border: Border.all(color: border, width: seleccionado ? 2 : 1),
         ),
         child: Text(
           texto,
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            color: fg,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w800, color: fg),
         ),
       ),
     );
@@ -1178,9 +1247,7 @@ class _CampoTexto extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bg = isDark
-        ? Colors.white.withValues(alpha: 0.05)
-        : Colors.white;
+    final bg = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white;
     final border = isDark
         ? Colors.white.withValues(alpha: 0.10)
         : Colors.black.withValues(alpha: 0.06);
@@ -1207,7 +1274,10 @@ class _CampoTexto extends StatelessWidget {
         ),
         filled: true,
         fillColor: bg,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: border),
@@ -1226,7 +1296,10 @@ class _CampoTexto extends StatelessWidget {
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.red.withValues(alpha: 0.85), width: 2),
+          borderSide: BorderSide(
+            color: Colors.red.withValues(alpha: 0.85),
+            width: 2,
+          ),
         ),
       ),
     );
@@ -1236,10 +1309,12 @@ class _CampoTexto extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   final String title;
   final String subtitle;
+  final IconData icon;
 
   const _SectionHeader({
     required this.title,
     required this.subtitle,
+    required this.icon,
   });
 
   @override
@@ -1247,14 +1322,38 @@ class _SectionHeader extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
+    final iconBg = isDark
+        ? Colors.white.withValues(alpha: 0.10)
+        : theme.colorScheme.primary.withValues(alpha: 0.12);
+    final iconFg = isDark
+        ? Colors.white.withValues(alpha: 0.92)
+        : theme.colorScheme.primary;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w900,
-          ),
+        Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: FaIcon(icon, size: _minimalFaIconSize, color: iconFg),
+            ),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 4),
         Text(
@@ -1273,10 +1372,12 @@ class _SectionHeader extends StatelessWidget {
 class _RegistroTile extends StatelessWidget {
   final Map<String, dynamic> registro;
   final bool isIngreso;
+  final VoidCallback onDelete;
 
   const _RegistroTile({
     required this.registro,
     required this.isIngreso,
+    required this.onDelete,
   });
 
   @override
@@ -1316,17 +1417,17 @@ class _RegistroTile extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: accent.withValues(alpha: isDark ? 0.20 : 0.12),
-              border: Border.all(color: accent.withValues(alpha: 0.18), width: 2),
+              border: Border.all(
+                color: accent.withValues(alpha: 0.18),
+                width: 2,
+              ),
             ),
             child: ClipOval(
               child: Image.network(
                 registro['bancoLogo'] ?? '',
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Icon(
-                  Icons.account_balance,
-                  color: accent,
-                  size: 20,
-                ),
+                errorBuilder: (_, __, ___) =>
+                    Icon(Icons.account_balance, color: accent, size: 20),
               ),
             ),
           ),
@@ -1341,7 +1442,9 @@ class _RegistroTile extends StatelessWidget {
                   isIngreso ? 'Ingreso' : 'Gasto',
                   style: theme.textTheme.labelLarge?.copyWith(
                     fontWeight: FontWeight.w900,
-                    color: isIngreso ? Colors.green.shade600 : Colors.red.shade600,
+                    color: isIngreso
+                        ? Colors.green.shade600
+                        : Colors.red.shade600,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -1373,15 +1476,86 @@ class _RegistroTile extends StatelessWidget {
           const SizedBox(width: 10),
 
           // Monto
-          Text(
-            'S/ ${(registro['monto'] as num).toStringAsFixed(2)}',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w900,
-              color: accent,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                'S/ ${(registro['monto'] as num).toStringAsFixed(2)}',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: accent,
+                ),
+              ),
+              const SizedBox(height: 6),
+              InkWell(
+                onTap: onDelete,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: (isDark ? Colors.red : Colors.red).withValues(
+                      alpha: 0.12,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.delete_outline_rounded,
+                    size: 17,
+                    color: isDark ? Colors.red.shade300 : Colors.red.shade700,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DialogoConfirmacionEliminacion extends StatelessWidget {
+  final bool isIngreso;
+
+  const _DialogoConfirmacionEliminacion({required this.isIngreso});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return AlertDialog(
+      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          Icon(
+            Icons.delete_outline_rounded,
+            color: isDark ? Colors.red.shade300 : Colors.red.shade700,
+          ),
+          const SizedBox(width: 8),
+          const Text('Confirmar eliminación'),
+        ],
+      ),
+      content: Text(
+        '¿Estás seguro que quieres eliminar este ${isIngreso ? 'ingreso' : 'gasto'}?',
+        style: theme.textTheme.bodyLarge,
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: isDark ? Colors.red.shade400 : Colors.red.shade700,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Eliminar'),
+        ),
+      ],
     );
   }
 }
@@ -1402,15 +1576,23 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           children: [
             Icon(
-              isIngreso ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+              isIngreso
+                  ? Icons.arrow_downward_rounded
+                  : Icons.arrow_upward_rounded,
               size: 64,
-              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.20),
+              color: (isDark ? Colors.white : Colors.black).withValues(
+                alpha: 0.20,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
-              isIngreso ? 'No hay ingresos registrados' : 'No hay gastos registrados',
+              isIngreso
+                  ? 'No hay ingresos registrados'
+                  : 'No hay gastos registrados',
               style: theme.textTheme.titleMedium?.copyWith(
-                color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.50),
+                color: (isDark ? Colors.white : Colors.black).withValues(
+                  alpha: 0.50,
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -1418,7 +1600,9 @@ class _EmptyState extends StatelessWidget {
               'Registra tu primer ${isIngreso ? 'ingreso' : 'gasto'} usando el formulario',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.40),
+                color: (isDark ? Colors.white : Colors.black).withValues(
+                  alpha: 0.40,
+                ),
               ),
             ),
           ],
@@ -1468,8 +1652,9 @@ class _SelectorBancos extends StatelessWidget {
                 width: 52,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: (isDark ? Colors.white : Colors.black)
-                      .withValues(alpha: 0.16),
+                  color: (isDark ? Colors.white : Colors.black).withValues(
+                    alpha: 0.16,
+                  ),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -1531,19 +1716,14 @@ class _BancoOption extends StatelessWidget {
   final Map<String, dynamic> banco;
   final bool isDark;
 
-  const _BancoOption({
-    required this.banco,
-    required this.isDark,
-  });
+  const _BancoOption({required this.banco, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
 
-    final bg = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.white;
+    final bg = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white;
     final stroke = isDark
         ? Colors.white.withValues(alpha: 0.10)
         : Colors.black.withValues(alpha: 0.06);
@@ -1574,16 +1754,17 @@ class _BancoOption extends StatelessWidget {
               height: 48,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: accent.withValues(alpha: 0.35), width: 2),
+                border: Border.all(
+                  color: accent.withValues(alpha: 0.35),
+                  width: 2,
+                ),
               ),
               child: ClipOval(
                 child: Image.network(
                   banco['logo'] ?? '',
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Icon(
-                    Icons.account_balance,
-                    color: accent,
-                  ),
+                  errorBuilder: (_, __, ___) =>
+                      Icon(Icons.account_balance, color: accent),
                 ),
               ),
             ),
@@ -1605,7 +1786,10 @@ class _BancoOption extends StatelessWidget {
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: (isDark ? Colors.white : Colors.black)
                               .withValues(alpha: 0.06),
@@ -1620,12 +1804,18 @@ class _BancoOption extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (banco['alias'] != null && (banco['alias'] as String).isNotEmpty) ...[
+                      if (banco['alias'] != null &&
+                          (banco['alias'] as String).isNotEmpty) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
-                            color: accent.withValues(alpha: isDark ? 0.16 : 0.10),
+                            color: accent.withValues(
+                              alpha: isDark ? 0.16 : 0.10,
+                            ),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -1666,10 +1856,7 @@ class _DialogoConfirmacion extends StatelessWidget {
   final String titulo;
   final String mensaje;
 
-  const _DialogoConfirmacion({
-    required this.titulo,
-    required this.mensaje,
-  });
+  const _DialogoConfirmacion({required this.titulo, required this.mensaje});
 
   @override
   Widget build(BuildContext context) {
@@ -1763,7 +1950,7 @@ class _DialogoConfirmacion extends StatelessWidget {
                     ),
                   ),
                 ],
-              )
+              ),
             ],
           ),
         ),
