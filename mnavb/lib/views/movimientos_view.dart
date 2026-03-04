@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import '../services/firebase_service.dart';
+import '../utils/currency_formatter.dart';
 
 const double _minimalFaIconSize = 14;
 
@@ -364,15 +365,6 @@ class _TransferenciaFormCardState extends State<_TransferenciaFormCard> {
     });
   }
 
-  Future<bool> _mostrarConfirmacion(String titulo, String mensaje) async {
-    final resultado = await showDialog<bool>(
-      context: context,
-      builder: (context) =>
-          _DialogoConfirmacion(titulo: titulo, mensaje: mensaje),
-    );
-    return resultado ?? false;
-  }
-
   Future<bool> _mostrarConfirmacionTransferencia({
     required double monto,
     required Map<String, dynamic> bancoOrigen,
@@ -686,7 +678,7 @@ class _PrestamoFormCardState extends State<_PrestamoFormCard> {
           )
         : await _mostrarConfirmacion(
             'Registrar préstamo antiguo',
-            '¿Deseas registrar este préstamo antiguo por S/ ${monto.toStringAsFixed(2)}?',
+            '¿Deseas registrar este préstamo antiguo por ${formatMoney(monto)}?',
           );
 
     if (!confirmar || !mounted) return;
@@ -1115,7 +1107,7 @@ class _TransferenciaTile extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                'S/ ${monto.toStringAsFixed(2)}',
+                formatMoney(monto),
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w900,
                   color: active,
@@ -1408,7 +1400,7 @@ class _PrestamoTile extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Text(
-            'S/ ${monto.toStringAsFixed(2)}',
+            formatMoney(monto),
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w900,
               color: active,
@@ -1969,7 +1961,7 @@ class _BancoItem extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    'S/ ${saldo.toStringAsFixed(2)}',
+                    formatMoney(saldo),
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w900,
                       color: active,
@@ -2024,6 +2016,7 @@ class _SectionHeader extends StatelessWidget {
             Container(
               width: 28,
               height: 28,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: iconBg,
                 borderRadius: BorderRadius.circular(9),
@@ -2085,8 +2078,14 @@ class _LogoBanco extends StatelessWidget {
         child: Image.network(
           logo,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) =>
-              Icon(Icons.account_balance, color: active, size: size * 0.5),
+          alignment: Alignment.center,
+          errorBuilder: (_, __, ___) => Center(
+            child: Icon(
+              Icons.account_balance,
+              color: active,
+              size: size * 0.5,
+            ),
+          ),
         ),
       ),
     );
@@ -2222,7 +2221,7 @@ class _DialogoConfirmacionTransferencia extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'S/ ${monto.toStringAsFixed(2)}',
+            formatMoney(monto),
             style: theme.textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.w900,
               color: active,
@@ -2338,7 +2337,7 @@ class _DialogoConfirmacionPrestamo extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'S/ ${monto.toStringAsFixed(2)}',
+            formatMoney(monto),
             style: theme.textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.w900,
               color: active,

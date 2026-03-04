@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../services/firebase_service.dart';
+import '../utils/currency_formatter.dart';
 
 enum KpiHistoryType { ingresos, gastos, prestamos, transferencias }
 
@@ -453,7 +454,10 @@ class _KpiHistoryViewState extends State<KpiHistoryView> {
                               ),
                               if (selectedBanco != null)
                                 Text(
-                                  'S/ ${((selectedBanco['saldo'] as num?) ?? 0).toDouble().toStringAsFixed(2)}',
+                                  formatMoney(
+                                    (((selectedBanco['saldo'] as num?) ?? 0)
+                                        .toDouble()),
+                                  ),
                                   style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
                                 ),
                               if (bankFilterActive) ...[
@@ -948,7 +952,7 @@ class _KpiBankOption extends StatelessWidget {
             ),
             if (saldo != null)
               Text(
-                'S/ ${saldo!.toStringAsFixed(2)}',
+                formatMoney(saldo!),
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w900,
                   color: accent,
@@ -1044,7 +1048,7 @@ class _HistoryCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                'S/ ${monto.toStringAsFixed(2)}',
+                formatMoney(monto),
                 style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 6),

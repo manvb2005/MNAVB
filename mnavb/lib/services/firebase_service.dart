@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/backend_type.dart';
 import '../models/user_model.dart';
+import '../utils/currency_formatter.dart';
 
 class FirebaseService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -36,6 +38,49 @@ class FirebaseService {
       return UserModel.fromFirestore(doc);
     }
     return null;
+  }
+
+  Future<void> updateUserProfile({
+    required String name,
+    required String username,
+    String? phone,
+  }) async {
+    final userId = currentUserId;
+    if (userId == null) throw Exception('Usuario no autenticado');
+
+    final cleanName = name.trim();
+    final cleanUsername = username.trim();
+    final cleanPhone = phone?.trim();
+
+    if (cleanName.isEmpty || cleanUsername.isEmpty) {
+      throw Exception('Nombre y usuario son obligatorios');
+    }
+
+    if (cleanPhone != null &&
+        cleanPhone.isNotEmpty &&
+        !RegExp(r'^\d{9}$').hasMatch(cleanPhone)) {
+      throw Exception('El telefono debe tener 9 digitos');
+    }
+
+    await _db.collection('Users').doc(userId).update({
+      'name': cleanName,
+      'username': cleanUsername,
+      'phone': (cleanPhone == null || cleanPhone.isEmpty) ? null : cleanPhone,
+    });
+  }
+
+  Future<BackendType> getBackendTypeForUser(String userId) async {
+    final doc = await _db.collection('Users').doc(userId).get();
+    if (!doc.exists) return BackendType.firebase;
+
+    final data = doc.data();
+    return backendTypeFromStorage(data?['backendType'] as String?);
+  }
+
+  Future<BackendType> getCurrentUserBackendType() async {
+    final userId = currentUserId;
+    if (userId == null) return BackendType.firebase;
+    return getBackendTypeForUser(userId);
   }
 
   User? get currentUser => _auth.currentUser;
@@ -80,6 +125,123 @@ class FirebaseService {
       sanitized['monto'] = _sanitizarMonto(sanitized['monto'] as num?);
     }
     return sanitized;
+  }
+
+  Map<String, dynamic> _sanitizarTarjetaData(Map<String, dynamic> data) {
+    final sanitized = Map<String, dynamic>.from(data);
+    sanitized['lineaCredito'] = _sanitizarSaldo(sanitized['lineaCredito'] as num?);
+    sanitized['deudaActual'] = _sanitizarSaldo(sanitized['deudaActual'] as num?);
+    sanitized['pagoMinimo'] = _sanitizarSaldo(sanitized['pagoMinimo'] as num?);
+    return sanitized;
+  }
+
+  // ===================== BANCOS =====================
+
+  // ===================== TARJETAS CREDITO =====================
+
+  Stream<List<Map<String, dynamic>>> getTarjetasCreditoStream() {
+    final userId = currentUserId;
+    if (userId == null) return Stream.value([]);
+
+    return _db
+        .collection('Users')
+        .doc(userId)
+        .collection('TarjetasCredito')
+        .orderBy('fechaCreacion', descending: true)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => {'id': doc.id, ..._sanitizarTarjetaData(doc.data())})
+              .toList(),
+        );
+  }
+
+  Future<void> agregarTarjetaCredito({
+    required String bancoNombre,
+    required String bancoLogo,
+    required String numeroTarjeta,
+    required String cvv,
+    required String fechaCaducidad,
+    required String nombreTitular,
+    required String dniTitular,
+  }) async {
+    final userId = currentUserId;
+    if (userId == null) throw Exception('Usuario no autenticado');
+
+    final cleanNumber = numeroTarjeta.replaceAll(RegExp(r'\D'), '');
+    final cleanCvv = cvv.replaceAll(RegExp(r'\D'), '');
+    final cleanName = nombreTitular.trim();
+    final cleanDni = dniTitular.replaceAll(RegExp(r'\D'), '');
+    final cleanExpiry = fechaCaducidad.trim();
+
+    if (cleanNumber.length < 13 || cleanNumber.length > 19) {
+      throw Exception('Numero de tarjeta invalido');
+    }
+    if (cleanCvv.length < 3 || cleanCvv.length > 4) {
+      throw Exception('CVV invalido');
+    }
+    if (!RegExp(r'^(0[1-9]|1[0-2])\/\d{2}$').hasMatch(cleanExpiry)) {
+      throw Exception('Fecha de caducidad invalida');
+    }
+    if (cleanName.isEmpty) {
+      throw Exception('Nombre del titular es obligatorio');
+    }
+    if (!RegExp(r'^\d{8}$').hasMatch(cleanDni)) {
+      throw Exception('DNI invalido');
+    }
+
+    await _db.collection('Users').doc(userId).collection('TarjetasCredito').add({
+      'bancoNombre': bancoNombre,
+      'bancoLogo': bancoLogo,
+      'numeroTarjeta': cleanNumber,
+      'cvv': cleanCvv,
+      'fechaCaducidad': cleanExpiry,
+      'nombreTitular': cleanName,
+      'dniTitular': cleanDni,
+      'diaCorte': null,
+      'diaPago': null,
+      'lineaCredito': 0.0,
+      'deudaActual': 0.0,
+      'pagoMinimo': 0.0,
+      'fechaCreacion': FieldValue.serverTimestamp(),
+      'fechaActualizacion': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> actualizarInfoTarjetaCredito({
+    required String tarjetaId,
+    int? diaCorte,
+    int? diaPago,
+    required double lineaCredito,
+    required double deudaActual,
+    required double pagoMinimo,
+  }) async {
+    final userId = currentUserId;
+    if (userId == null) throw Exception('Usuario no autenticado');
+
+    if (diaCorte != null && (diaCorte < 1 || diaCorte > 31)) {
+      throw Exception('Dia de corte invalido');
+    }
+    if (diaPago != null && (diaPago < 1 || diaPago > 31)) {
+      throw Exception('Dia de pago invalido');
+    }
+    _validarSaldoNoNegativo(lineaCredito);
+    _validarSaldoNoNegativo(deudaActual);
+    _validarSaldoNoNegativo(pagoMinimo);
+
+    await _db
+        .collection('Users')
+        .doc(userId)
+        .collection('TarjetasCredito')
+        .doc(tarjetaId)
+        .update({
+          'diaCorte': diaCorte,
+          'diaPago': diaPago,
+          'lineaCredito': _sanitizarSaldo(lineaCredito),
+          'deudaActual': _sanitizarSaldo(deudaActual),
+          'pagoMinimo': _sanitizarSaldo(pagoMinimo),
+          'fechaActualizacion': FieldValue.serverTimestamp(),
+        });
   }
 
   // ===================== BANCOS =====================
@@ -274,7 +436,7 @@ class FirebaseService {
     final saldoActual = (bancoDoc.data()?['saldo'] as num?)?.toDouble() ?? 0.0;
     if (saldoActual < monto) {
       throw Exception(
-        'Saldo insuficiente. Saldo actual: S/ ${saldoActual.toStringAsFixed(2)}',
+        'Saldo insuficiente. Saldo actual: ${formatMoney(saldoActual)}',
       );
     }
 
@@ -445,7 +607,7 @@ class FirebaseService {
         (bancoOrigenDoc.data()?['saldo'] as num?)?.toDouble() ?? 0.0;
     if (saldoOrigen < monto) {
       throw Exception(
-        'Saldo insuficiente en $bancoOrigenNombre. Saldo actual: S/ ${saldoOrigen.toStringAsFixed(2)}',
+        'Saldo insuficiente en $bancoOrigenNombre. Saldo actual: ${formatMoney(saldoOrigen)}',
       );
     }
 
@@ -610,7 +772,7 @@ class FirebaseService {
           (bancoDoc.data()?['saldo'] as num?)?.toDouble() ?? 0.0;
       if (saldoActual < monto) {
         throw Exception(
-          'Saldo insuficiente. Saldo actual: S/ ${saldoActual.toStringAsFixed(2)}',
+          'Saldo insuficiente. Saldo actual: ${formatMoney(saldoActual)}',
         );
       }
     }
@@ -769,7 +931,7 @@ class FirebaseService {
     final saldoActual = (bancoDoc.data()?['saldo'] as num?)?.toDouble() ?? 0.0;
     if (saldoActual < monto) {
       throw Exception(
-        'Saldo insuficiente. Saldo actual: S/ ${saldoActual.toStringAsFixed(2)}',
+        'Saldo insuficiente. Saldo actual: ${formatMoney(saldoActual)}',
       );
     }
 

@@ -5,6 +5,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'home_view.dart';
 import 'registro_view.dart';
 import 'movimientos_view.dart';
+import 'credit_cards_view.dart';
+import 'profile_view.dart';
 import '../widgets/voucher_notification_listener.dart';
 
 class MainNavView extends StatefulWidget {
@@ -21,6 +23,8 @@ class _MainNavViewState extends State<MainNavView> {
     HomeView(),
     RegistroView(),
     MovimientosView(),
+    CreditCardsView(),
+    ProfileView(),
   ];
 
   @override
@@ -78,6 +82,8 @@ class _ModernBottomNav extends StatelessWidget {
       _NavItemData(icon: FontAwesomeIcons.house),
       _NavItemData(icon: FontAwesomeIcons.squarePlus),
       _NavItemData(icon: FontAwesomeIcons.rightLeft),
+      _NavItemData(icon: FontAwesomeIcons.creditCard),
+      _NavItemData(icon: FontAwesomeIcons.user),
     ];
 
     return SafeArea(

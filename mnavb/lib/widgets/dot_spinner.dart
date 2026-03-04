@@ -40,13 +40,13 @@ class _DotSpinnerState extends State<DotSpinner> with SingleTickerProviderStateM
           final t = (_controller.value + delay) % 1.0;
           final scale = t < 0.5 ? t * 2 : (1 - t) * 2;
           final opacity = 0.5 + 0.5 * scale;
+          final radius = widget.size / 2 - widget.size * 0.15;
           return Transform(
-            transform: Matrix4.identity()
-              ..translate(
-                (widget.size / 2 - widget.size * 0.15) * math.cos(angle),
-                (widget.size / 2 - widget.size * 0.15) * math.sin(angle),
-                0.0,
-              ),
+            transform: Matrix4.translationValues(
+              radius * math.cos(angle),
+              radius * math.sin(angle),
+              0.0,
+            ),
             child: Opacity(
               opacity: opacity,
               child: Container(

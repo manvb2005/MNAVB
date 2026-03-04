@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-
+import 'backend_type.dart';
 
 class UserModel {
   final String id;
@@ -7,6 +7,7 @@ class UserModel {
   final String username;
   final String email;
   final String? phone;
+  final BackendType backendType;
 
   UserModel({
     required this.id,
@@ -14,6 +15,7 @@ class UserModel {
     required this.username,
     required this.email,
     this.phone,
+    this.backendType = BackendType.firebase,
   });
 
   Map<String, dynamic> toMap() {
@@ -23,6 +25,7 @@ class UserModel {
       'username': username,
       'email': email,
       'phone': phone,
+      'backendType': backendType.storageValue,
     };
   }
 
@@ -33,6 +36,7 @@ class UserModel {
       username: map['username'] ?? '',
       email: map['email'] ?? '',
       phone: map['phone'],
+      backendType: backendTypeFromStorage(map['backendType'] as String?),
     );
   }
 

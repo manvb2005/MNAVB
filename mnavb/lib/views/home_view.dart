@@ -5,6 +5,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'bancos_view.dart';
 import 'kpi_history_view.dart';
 import '../services/firebase_service.dart';
+import '../utils/currency_formatter.dart';
 
 enum SummaryRange { today, week, month, year }
 
@@ -610,7 +611,7 @@ class _HomeViewState extends State<HomeView> {
                                               child: _KpiTile(
                                                 tag: 'Saldo total',
                                                 value:
-                                                    'S/ ${saldoTotal.toStringAsFixed(2)}',
+                                                    formatMoney(saldoTotal),
                                                 icon: FontAwesomeIcons.wallet,
                                                 accent: active,
                                                 muted: muted,
@@ -638,7 +639,7 @@ class _HomeViewState extends State<HomeView> {
                                               child: _KpiTile(
                                                 tag: 'Ingresos',
                                                 value:
-                                                    'S/ ${totalIngresos.toStringAsFixed(2)}',
+                                                    formatMoney(totalIngresos),
                                                 icon:
                                                     FontAwesomeIcons.arrowDown,
                                                 accent: active,
@@ -672,7 +673,7 @@ class _HomeViewState extends State<HomeView> {
                                               child: _KpiTile(
                                                 tag: 'Gastos',
                                                 value:
-                                                    'S/ ${totalGastos.toStringAsFixed(2)}',
+                                                    formatMoney(totalGastos),
                                                 icon: FontAwesomeIcons
                                                     .cartShopping,
                                                 accent: active,
@@ -701,7 +702,7 @@ class _HomeViewState extends State<HomeView> {
                                               child: _KpiTile(
                                                 tag: 'Préstamos',
                                                 value:
-                                                    'S/ ${totalPrestamos.toStringAsFixed(2)}',
+                                                    formatMoney(totalPrestamos),
                                                 icon: FontAwesomeIcons
                                                     .handHoldingDollar,
                                                 accent: active,
@@ -732,7 +733,7 @@ class _HomeViewState extends State<HomeView> {
                                         child: _KpiTile(
                                           tag: 'Transferencias',
                                           value:
-                                              'S/ ${totalTransferencias.toStringAsFixed(2)}',
+                                              formatMoney(totalTransferencias),
                                           icon: FontAwesomeIcons.rightLeft,
                                           accent: active,
                                           muted: muted,
@@ -1661,7 +1662,7 @@ class _BankMemberChip extends StatelessWidget {
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
-                'S/ ${balance.toStringAsFixed(2)}',
+                formatMoney(balance),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w900,
                   color: selected ? accent : fg,
@@ -1748,7 +1749,7 @@ class _CompareBarsModern extends StatelessWidget {
       children: [
         _MetricRow(
           label: 'Ingresos',
-          value: 'S/ ${ingresos.toStringAsFixed(2)}',
+          value: formatMoney(ingresos),
           color: accent.withValues(alpha: 0.90),
           track: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
           progress: pIngresos,
@@ -1758,7 +1759,7 @@ class _CompareBarsModern extends StatelessWidget {
         const SizedBox(height: 12),
         _MetricRow(
           label: 'Gastos',
-          value: 'S/ ${gastos.toStringAsFixed(2)}',
+          value: formatMoney(gastos),
           color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.35),
           track: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
           progress: pGastos,
@@ -1902,13 +1903,13 @@ class _RingBreakdownModern extends StatelessWidget {
             children: [
               _LegendLine(
                 label: 'Transferencias',
-                value: 'S/ ${transfer.toStringAsFixed(2)}',
+                value: formatMoney(transfer),
                 dot: accent.withValues(alpha: 0.90),
               ),
               const SizedBox(height: 10),
               _LegendLine(
                 label: 'Préstamos',
-                value: 'S/ ${prestamos.toStringAsFixed(2)}',
+                value: formatMoney(prestamos),
                 dot: (isDark ? Colors.white : Colors.black).withValues(
                   alpha: 0.35,
                 ),

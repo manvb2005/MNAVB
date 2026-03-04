@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/voucher_model.dart';
 import '../services/shared_media_service.dart';
 import '../services/firebase_service.dart';
+import '../utils/currency_formatter.dart';
 
 /// Provider para manejar el procesamiento automático de vouchers
 class VoucherProvider extends ChangeNotifier {
@@ -91,7 +92,8 @@ class VoucherProvider extends ChangeNotifier {
           fecha: fecha,
         );
         
-        _mensajeExito = '✅ Gasto de S/ ${voucher.monto.toStringAsFixed(2)} guardado automáticamente';
+        _mensajeExito =
+            '✅ Gasto de ${formatMoney(voucher.monto)} guardado automáticamente';
       } else {
         await _firebaseService.registrarIngreso(
           bancoId: bancoId,
@@ -104,7 +106,8 @@ class VoucherProvider extends ChangeNotifier {
           fecha: fecha,
         );
         
-        _mensajeExito = '✅ Ingreso de S/ ${voucher.monto.toStringAsFixed(2)} guardado automáticamente';
+        _mensajeExito =
+            '✅ Ingreso de ${formatMoney(voucher.monto)} guardado automáticamente';
       }
 
       print('✅ Transacción guardada exitosamente');

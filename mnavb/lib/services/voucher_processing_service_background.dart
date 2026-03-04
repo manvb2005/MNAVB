@@ -406,8 +406,6 @@ class VoucherProcessingService {
 
   /// Extrae la descripción/mensaje del voucher
   String? _extraerDescripcion(String texto) {
-    // Normalizar texto para mejor búsqueda
-    final textoLower = texto.toLowerCase();
     final lineas = texto.split('\n').map((l) => l.trim()).toList();
     
     // --- PATRÓN 1: Mensaje de Yape (después de la fecha y antes de "CÓDIGO DE SEGURIDAD") ---

@@ -19,7 +19,7 @@ import java.io.FileOutputStream
 class ShareReceiverActivity : Activity() {
 
     private val CHANNEL = "voucher_share"
-    private val MAX_RETRIES = 12
+    private val MAX_RETRIES = 40
     private val RETRY_DELAY_MS = 250L
 
     override fun onCreate(savedInstanceState: Bundle?) {

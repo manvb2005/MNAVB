@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
+import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:provider/provider.dart';
@@ -11,16 +13,25 @@ import 'viewmodels/remember_session_provider.dart';
 import 'viewmodels/voucher_provider.dart';
 import 'views/login_view.dart';
 import 'views/register_view.dart';
+import 'views/external_api_home_view.dart';
+import 'views/external_api_voucher_confirm_view.dart';
 import 'viewmodels/register_viewmodel.dart';
 import 'views/main_nav_view.dart';
 import 'utils/system_notifications.dart';
-import 'services/voucher_processing_service_background.dart';
+import 'services/backends/finance_backend.dart';
+import 'services/backends/finance_backend_resolver.dart';
+import 'models/backend_type.dart';
 import 'services/firebase_service.dart';
+import 'services/pending_external_voucher_service.dart';
+import 'services/voucher_processing_service_background.dart';
 import 'services/share_enqueue_service.dart';
+import 'services/app_monitoring_service.dart';
+import 'utils/currency_formatter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Nombre de la tarea del WorkManager
 const taskProcessVoucher = "processVoucher";
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> _enableImmersiveMode() async {
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -36,7 +47,10 @@ Future<void> _safeNotification(Future<void> Function() action) async {
   try {
     await action();
   } catch (e) {
-    print('⚠️ Notificación no disponible en este contexto: $e');
+    AppMonitoringService.instance.logWarning(
+      'Notificacion no disponible en este contexto: $e',
+      tag: 'NOTIFICATION',
+    );
   }
 }
 
@@ -46,12 +60,20 @@ Future<void> _safeNotification(Future<void> Function() action) async {
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     try {
+      await AppMonitoringService.instance.init();
+
       if (task != taskProcessVoucher) {
-        print('ℹ️ WorkManager: tarea ignorada: $task');
+        AppMonitoringService.instance.logInfo(
+          'WorkManager: tarea ignorada: $task',
+          tag: 'WORKER',
+        );
         return Future.value(true);
       }
 
-      print('📱 WorkManager: Iniciando tarea de procesamiento de voucher');
+      AppMonitoringService.instance.logInfo(
+        'WorkManager: iniciando tarea de procesamiento de voucher',
+        tag: 'WORKER',
+      );
 
       // IMPORTANTE: Inicializar Firebase en background
       await Firebase.initializeApp(
@@ -72,13 +94,19 @@ void callbackDispatcher() {
         throw Exception('URI del voucher no proporcionado');
       }
 
-      print('📄 Procesando voucher desde URI: $uri');
+      AppMonitoringService.instance.logInfo(
+        'Procesando voucher desde URI: $uri',
+        tag: 'WORKER',
+      );
 
       // Procesar el voucher con OCR
       final voucherService = VoucherProcessingService();
       final result = await voucherService.processSharedUri(uri);
 
-      print('✅ Voucher procesado: ${result.tipo} - S/ ${result.monto}');
+      AppMonitoringService.instance.logInfo(
+        'Voucher procesado: ${result.tipo} - ${formatMoney(result.monto)}',
+        tag: 'WORKER',
+      );
 
       // Obtener UID del usuario desde SharedPreferences
       final prefs = await SharedPreferences.getInstance();
@@ -88,66 +116,95 @@ void callbackDispatcher() {
         throw Exception('Usuario no autenticado. Inicia sesión en la app.');
       }
 
-      // Guardar en Firestore
-      final firebaseService = FirebaseService();
-
-      // Buscar o crear el banco
-      String? bancoId = await _buscarOCrearBanco(
-        firebaseService,
+      final backendType = await FinanceBackendResolver.resolveBackendType(
         userId,
-        result.bancoNombre,
-        result.bancoLogo,
-        result.tipoCuenta,
       );
 
-      if (bancoId == null) {
-        throw Exception('No se pudo obtener o crear el banco');
+      if (backendType == BackendType.externalApi) {
+        if (result.tipo != 'gasto' ||
+            result.bancoNombre.toLowerCase() != 'yape') {
+          throw Exception(
+            'API externa solo soporta Yapeaste (gasto) por ahora.',
+          );
+        }
+
+        final pendingService = PendingExternalVoucherService();
+        await pendingService.save(
+          PendingExternalVoucher(
+            notificationId: notifId,
+            monto: result.monto,
+            descripcion: result.descripcion,
+            fecha: result.fecha,
+            moneda: 'PEN',
+            bancoNombre: result.bancoNombre,
+          ),
+        );
+
+        await _safeNotification(
+          () => SystemNotifications.showNeedsExternalConfirmation(
+            notifId,
+            'Toca aqui para confirmar categoria y subcategoria.',
+          ),
+        );
+
+        return Future.value(true);
       }
+
+      final backend = await FinanceBackendResolver.resolveForUser(userId);
+      final bancoId = await backend.findOrCreateBank(
+        userId: userId,
+        bank: BankIdentity(
+          nombre: result.bancoNombre,
+          logo: result.bancoLogo,
+          tipoCuenta: result.tipoCuenta,
+        ),
+      );
+
+      final movement = MovementRecordInput(
+        userId: userId,
+        bancoId: bancoId,
+        bancoNombre: result.bancoNombre,
+        bancoLogo: result.bancoLogo,
+        tipoCuenta: result.tipoCuenta,
+        categoria: result.descripcion,
+        descripcion: result.descripcion,
+        monto: result.monto,
+        fecha: result.fecha,
+      );
 
       // Registrar la transacción
       if (result.tipo == 'gasto') {
-        await firebaseService.registrarGastoConUserId(
-          userId: userId,
-          bancoId: bancoId,
-          bancoNombre: result.bancoNombre,
-          bancoLogo: result.bancoLogo,
-          tipoCuenta: result.tipoCuenta,
-          categoria: result.descripcion,
-          monto: result.monto,
-          fecha: result.fecha,
-        );
+        await backend.registerGasto(movement: movement);
 
         await _safeNotification(
           () => SystemNotifications.showSuccess(
             notifId,
-            'Gasto registrado: S/ ${result.monto.toStringAsFixed(2)}${result.descripcion != 'Sin descripción' ? ' - ${result.descripcion}' : ''}',
+            'Gasto registrado: ${formatMoney(result.monto)}${result.descripcion != 'Sin descripción' ? ' - ${result.descripcion}' : ''}',
           ),
         );
       } else {
-        await firebaseService.registrarIngresoConUserId(
-          userId: userId,
-          bancoId: bancoId,
-          bancoNombre: result.bancoNombre,
-          bancoLogo: result.bancoLogo,
-          tipoCuenta: result.tipoCuenta,
-          categoria: result.descripcion,
-          monto: result.monto,
-          fecha: result.fecha,
-        );
+        await backend.registerIngreso(movement: movement);
 
         await _safeNotification(
           () => SystemNotifications.showSuccess(
             notifId,
-            'Ingreso registrado: S/ ${result.monto.toStringAsFixed(2)}${result.descripcion != 'Sin descripción' ? ' - ${result.descripcion}' : ''}',
+            'Ingreso registrado: ${formatMoney(result.monto)}${result.descripcion != 'Sin descripción' ? ' - ${result.descripcion}' : ''}',
           ),
         );
       }
 
-      print('💾 Transacción guardada en Firestore');
+      AppMonitoringService.instance.logInfo(
+        'Transaccion guardada correctamente',
+        tag: 'WORKER',
+      );
 
       return Future.value(true);
     } catch (e) {
-      print('❌ Error en background: $e');
+      await AppMonitoringService.instance.logError(
+        'Error en procesamiento en background',
+        tag: 'WORKER',
+        error: e,
+      );
 
       final notifId = (inputData?['notifId'] as int?) ?? 9999;
       await _safeNotification(
@@ -164,82 +221,104 @@ void callbackDispatcher() {
   });
 }
 
-/// Busca un banco existente o lo crea si no existe
-Future<String?> _buscarOCrearBanco(
-  FirebaseService firebaseService,
-  String userId,
-  String nombreBanco,
-  String logoBanco,
-  String tipoCuenta,
-) async {
-  try {
-    // Intentar buscar el banco existente
-    final bancos = await firebaseService.getBancosListConUserId(userId);
-
-    for (var banco in bancos) {
-      if (banco['nombre'].toString().toLowerCase() ==
-          nombreBanco.toLowerCase()) {
-        return banco['id'] as String;
-      }
-    }
-
-    // Si no existe, crear uno nuevo
-    return await firebaseService.agregarBancoConUserId(
-      userId: userId,
-      nombre: nombreBanco,
-      logo: logoBanco,
-      tipoCuenta: tipoCuenta,
-      saldo: 0.0,
-    );
-  } catch (e) {
-    print('Error buscando/creando banco: $e');
-    return null;
-  }
-}
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppMonitoringService.instance.init();
 
-  // Pantalla completa: oculta barras del sistema
-  await _enableImmersiveMode();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    unawaited(
+      AppMonitoringService.instance.logError(
+        'FlutterError no manejado',
+        tag: 'FLUTTER',
+        error: details.exception,
+        stackTrace: details.stack,
+      ),
+    );
+  };
 
-  // Inicializar Firebase
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  PlatformDispatcher.instance.onError = (error, stack) {
+    unawaited(
+      AppMonitoringService.instance.logError(
+        'Error de plataforma no manejado',
+        tag: 'PLATFORM',
+        error: error,
+        stackTrace: stack,
+      ),
+    );
+    return true;
+  };
 
-  // Inicializar notificaciones del sistema
-  await SystemNotifications.init();
+  await runZonedGuarded(() async {
+    // Inicializar canal de share lo antes posible para evitar perder intents
+    await ShareEnqueueService.init();
 
-  // Inicializar WorkManager
-  await Workmanager().initialize(
-    callbackDispatcher,
-    isInDebugMode: false, // Cambiar a true para ver logs detallados
-  );
+    // Inicializar WorkManager temprano (necesario para encolar desde share)
+    await Workmanager().initialize(
+      callbackDispatcher,
+      isInDebugMode: false, // Cambiar a true para ver logs detallados
+    );
 
-  // Limpiar trabajos pendientes antiguos para evitar reintentos fantasma
-  await Workmanager().cancelAll();
+    // Pantalla completa: oculta barras del sistema
+    await _enableImmersiveMode();
 
-  // Limpiar tarea periódica antigua de parámetros si aún existe en el dispositivo
-  await Workmanager().cancelByUniqueName('monitor_parametros_periodic');
+    // Inicializar Firebase
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
 
-  // Inicializar servicio para encolar vouchers compartidos (lo antes posible)
-  await ShareEnqueueService.init();
+    // Inicializar notificaciones del sistema
+    await SystemNotifications.init();
 
-  print('🚀 WorkManager inicializado correctamente');
+    // Limpiar tarea periódica antigua de parámetros si aún existe en el dispositivo
+    await Workmanager().cancelByUniqueName('monitor_parametros_periodic');
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => RememberSessionProvider()),
-        ChangeNotifierProvider(create: (_) => VoucherProvider()),
-      ],
-      child: const MyApp(),
-    ),
-  );
+    AppMonitoringService.instance.logInfo(
+      'WorkManager inicializado correctamente',
+      tag: 'BOOT',
+      persist: true,
+    );
+
+    final startupRoute = await _resolveStartupRoute();
+
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => ThemeProvider()),
+          ChangeNotifierProvider(create: (_) => RememberSessionProvider()),
+          ChangeNotifierProvider(create: (_) => VoucherProvider()),
+        ],
+        child: MyApp(initialRoute: startupRoute),
+      ),
+    );
+  }, (error, stackTrace) {
+    unawaited(
+      AppMonitoringService.instance.logError(
+        'Error no manejado en zona principal',
+        tag: 'ZONE',
+        error: error,
+        stackTrace: stackTrace,
+      ),
+    );
+  });
+}
+
+Future<String> _resolveStartupRoute() async {
+  final userId = FirebaseService().currentUserId;
+  if (userId == null) return AppRoutes.login;
+
+  final backendType = await FinanceBackendResolver.resolveBackendType(userId);
+  if (backendType == BackendType.externalApi) {
+    return AppRoutes.externalApiHome;
+  }
+
+  return AppRoutes.home;
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+  final String initialRoute;
+
+  const MyApp({super.key, required this.initialRoute});
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -270,12 +349,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
     return MaterialApp(
+      navigatorKey: appNavigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'Control Finanzas',
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: theme.themeMode,
-      initialRoute: AppRoutes.login,
+      initialRoute: widget.initialRoute,
       routes: {
         AppRoutes.login: (_) => const LoginView(),
         AppRoutes.register: (_) => ChangeNotifierProvider(
@@ -283,6 +363,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           child: const RegisterView(),
         ),
         AppRoutes.home: (_) => const MainNavView(),
+        AppRoutes.externalApiHome: (_) => const ExternalApiHomeView(),
+        AppRoutes.externalApiVoucherConfirm: (_) =>
+            const ExternalApiVoucherConfirmView(),
+        AppRoutes.externalApiVoucherOverlay: (_) =>
+            const ExternalApiVoucherConfirmView(isOverlay: true),
       },
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/firebase_service.dart';
+import '../utils/currency_formatter.dart';
 
 /* ----------------------------- DATA (MOCK) ----------------------------- */
 
@@ -42,6 +43,24 @@ const _bancosPredefinidos = [
 enum TipoCuenta { corriente, ahorro }
 
 String _tipoCuentaLabel(TipoCuenta t) => t == TipoCuenta.corriente ? 'Corriente' : 'Ahorro';
+
+double? _parseMoneyInput(String raw) {
+  var value = raw.trim().replaceAll(' ', '');
+  if (value.isEmpty) return null;
+
+  if (value.contains(',') && value.contains('.')) {
+    value = value.replaceAll(',', '');
+  } else if (value.contains(',') && !value.contains('.')) {
+    final parts = value.split(',');
+    if (parts.length == 2 && parts[1].length <= 2) {
+      value = '${parts[0]}.${parts[1]}';
+    } else {
+      value = value.replaceAll(',', '');
+    }
+  }
+
+  return double.tryParse(value);
+}
 
 /* ----------------------------- VIEW ----------------------------- */
 
@@ -508,7 +527,7 @@ class _BancoCardPro extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      'S/ ${saldo.toStringAsFixed(2)}',
+                      formatMoney(saldo),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w900,
                         color: accent.withValues(alpha: 0.95),
@@ -608,6 +627,7 @@ class _BancoFormSheetState extends State<_BancoFormSheet> {
   TipoCuenta? _tipoSel;
   final _alias = TextEditingController();
   final _saldo = TextEditingController();
+  final _saldoFocus = FocusNode();
   final _formKey = GlobalKey<FormState>();
 
   @override
@@ -623,15 +643,30 @@ class _BancoFormSheetState extends State<_BancoFormSheet> {
       _tipoSel = tipoCuentaStr == 'Corriente' ? TipoCuenta.corriente : TipoCuenta.ahorro;
       _alias.text = ini['alias'] ?? '';
       final saldoNum = (ini['saldo'] as num?)?.toDouble() ?? 0.0;
-      _saldo.text = saldoNum.toStringAsFixed(2);
+      _saldo.text = formatAmount(saldoNum);
     }
+
+    _saldoFocus.addListener(() {
+      if (_saldoFocus.hasFocus) return;
+      _formatSaldoField();
+    });
   }
 
   @override
   void dispose() {
     _alias.dispose();
     _saldo.dispose();
+    _saldoFocus.dispose();
     super.dispose();
+  }
+
+  void _formatSaldoField() {
+    final parsed = _parseMoneyInput(_saldo.text);
+    if (parsed == null) return;
+    _saldo.value = TextEditingValue(
+      text: formatAmount(parsed),
+      selection: TextSelection.collapsed(offset: formatAmount(parsed).length),
+    );
   }
 
   void _submit() {
@@ -646,7 +681,8 @@ class _BancoFormSheetState extends State<_BancoFormSheet> {
       return;
     }
 
-    final saldo = double.tryParse(_saldo.text.replaceAll(',', '.')) ?? 0.0;
+    final saldo = _parseMoneyInput(_saldo.text) ?? 0.0;
+    _saldo.text = formatAmount(saldo);
 
     Navigator.pop(
       context,
@@ -870,6 +906,7 @@ class _BancoFormSheetState extends State<_BancoFormSheet> {
                     const SizedBox(height: 10),
                     _SoftField(
                       controller: _saldo,
+                      focusNode: _saldoFocus,
                       hint: '0.00',
                       prefix: 'S/ ',
                       isDark: isDark,
@@ -878,10 +915,13 @@ class _BancoFormSheetState extends State<_BancoFormSheet> {
                       fg: fg,
                       muted: muted,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+([.,]\d{0,2})?$'))],
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[\d,\.]')),
+                      ],
+                      onEditingComplete: _formatSaldoField,
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) return 'Ingresa el saldo';
-                        final value = double.tryParse(v.replaceAll(',', '.'));
+                        final value = _parseMoneyInput(v);
                         if (value == null) return 'Saldo inválido';
                         if (value < 0) return 'No puede ser negativo';
                         return null;
@@ -983,6 +1023,7 @@ class _ToggleChip extends StatelessWidget {
 
 class _SoftField extends StatelessWidget {
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final String hint;
   final String? prefix;
   final bool isDark;
@@ -992,10 +1033,12 @@ class _SoftField extends StatelessWidget {
   final Color muted;
   final TextInputType? keyboardType;
   final List<TextInputFormatter>? inputFormatters;
+  final VoidCallback? onEditingComplete;
   final String? Function(String?) validator;
 
   const _SoftField({
     required this.controller,
+    this.focusNode,
     required this.hint,
     required this.isDark,
     required this.stroke,
@@ -1006,15 +1049,18 @@ class _SoftField extends StatelessWidget {
     this.prefix,
     this.keyboardType,
     this.inputFormatters,
+    this.onEditingComplete,
   });
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
+      focusNode: focusNode,
       style: TextStyle(color: fg, fontWeight: FontWeight.w800),
       keyboardType: keyboardType,
       inputFormatters: inputFormatters,
+      onEditingComplete: onEditingComplete,
       validator: validator,
       decoration: InputDecoration(
         hintText: hint,

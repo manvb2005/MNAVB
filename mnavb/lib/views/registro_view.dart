@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import '../services/firebase_service.dart';
+import '../utils/currency_formatter.dart';
 
 const double _minimalFaIconSize = 14;
 
@@ -660,7 +661,7 @@ class _GastoFormCardState extends State<_GastoFormCard> {
 
     // Confirmar antes de registrar gasto
     final confirmar = await _mostrarConfirmacion(
-      'Registrar gasto de S/ ${monto.toStringAsFixed(2)}',
+      'Registrar gasto de ${formatMoney(monto)}',
       'Se descontará del saldo de ${_bancoSeleccionado!['nombre']}.',
     );
 
@@ -1337,6 +1338,7 @@ class _SectionHeader extends StatelessWidget {
             Container(
               width: 28,
               height: 28,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: iconBg,
                 borderRadius: BorderRadius.circular(9),
@@ -1426,8 +1428,10 @@ class _RegistroTile extends StatelessWidget {
               child: Image.network(
                 registro['bancoLogo'] ?? '',
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    Icon(Icons.account_balance, color: accent, size: 20),
+                alignment: Alignment.center,
+                errorBuilder: (_, __, ___) => Center(
+                  child: Icon(Icons.account_balance, color: accent, size: 20),
+                ),
               ),
             ),
           ),
@@ -1480,7 +1484,7 @@ class _RegistroTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                'S/ ${(registro['monto'] as num).toStringAsFixed(2)}',
+                formatMoney(registro['monto'] as num),
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w900,
                   color: accent,
@@ -1832,7 +1836,7 @@ class _BancoOption extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Saldo: S/ ${saldo.toStringAsFixed(2)}',
+                    'Saldo: ${formatMoney(saldo)}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: accent,
                       fontWeight: FontWeight.w900,

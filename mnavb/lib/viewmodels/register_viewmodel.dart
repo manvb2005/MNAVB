@@ -1,8 +1,7 @@
-
 import 'package:flutter/material.dart';
+import '../models/backend_type.dart';
 import '../services/firebase_service.dart';
 import '../models/user_model.dart';
-
 
 class RegisterViewModel extends ChangeNotifier {
   final FirebaseService _firebaseService = FirebaseService();
@@ -18,11 +17,16 @@ class RegisterViewModel extends ChangeNotifier {
     required String password,
     required String confirmPassword,
     String? phone,
+    BackendType backendType = BackendType.firebase,
   }) async {
     errorMessage = null;
     successMessage = null;
     // Validación campos obligatorios
-    if (name.isEmpty || username.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
+    if (name.isEmpty ||
+        username.isEmpty ||
+        email.isEmpty ||
+        password.isEmpty ||
+        confirmPassword.isEmpty) {
       errorMessage = 'Todos los campos son obligatorios';
       notifyListeners();
       return false;
@@ -42,7 +46,8 @@ class RegisterViewModel extends ChangeNotifier {
     if (phone != null && phone.isNotEmpty) {
       final phoneReg = RegExp(r'^\d{9}$');
       if (!phoneReg.hasMatch(phone)) {
-        errorMessage = 'El número de teléfono debe tener exactamente 9 dígitos numéricos';
+        errorMessage =
+            'El número de teléfono debe tener exactamente 9 dígitos numéricos';
         notifyListeners();
         return false;
       }
@@ -61,13 +66,17 @@ class RegisterViewModel extends ChangeNotifier {
     isLoading = true;
     notifyListeners();
     try {
-      final cred = await _firebaseService.registerWithEmail(email: emailFinal, password: password);
+      final cred = await _firebaseService.registerWithEmail(
+        email: emailFinal,
+        password: password,
+      );
       final user = UserModel(
         id: cred.user!.uid,
         name: name,
         username: username,
         email: emailFinal,
         phone: phone,
+        backendType: backendType,
       );
       await _firebaseService.createUserDocument(user);
       isLoading = false;
@@ -84,7 +93,8 @@ class RegisterViewModel extends ChangeNotifier {
 
   String _parseError(Exception e) {
     final msg = e.toString();
-    if (msg.contains('email-already-in-use')) return 'El email ya está registrado';
+    if (msg.contains('email-already-in-use'))
+      return 'El email ya está registrado';
     if (msg.contains('invalid-email')) return 'Email inválido';
     return 'Error al registrar usuario';
   }

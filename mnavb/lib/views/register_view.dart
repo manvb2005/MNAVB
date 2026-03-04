@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../app/app_routes.dart';
+import '../models/backend_type.dart';
 import '../utils/auth_background.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +23,7 @@ class _RegisterViewState extends State<RegisterView> {
   final confirmCtrl = TextEditingController();
   bool showPass = false;
   bool showConfirm = false;
+  BackendType _backendType = BackendType.firebase;
 
   @override
   void dispose() {
@@ -158,6 +160,13 @@ class _RegisterViewState extends State<RegisterView> {
                                   ),
                                 ),
                               ),
+                              const SizedBox(height: 14),
+                              _BackendDataSourceSelector(
+                                value: _backendType,
+                                onChanged: (value) {
+                                  setState(() => _backendType = value);
+                                },
+                              ),
                               const SizedBox(height: 40),
                               Consumer<RegisterViewModel>(
                                 builder: (context, registerVM, _) {
@@ -195,6 +204,8 @@ class _RegisterViewState extends State<RegisterView> {
                                                             ? null
                                                             : phoneCtrl.text
                                                                   .trim(),
+                                                        backendType:
+                                                            _backendType,
                                                       );
                                                   if (!context.mounted) return;
                                                   if (ok) {
@@ -294,6 +305,99 @@ class _RegisterViewState extends State<RegisterView> {
         ],
       ),
       child: child,
+    );
+  }
+}
+
+class _BackendDataSourceSelector extends StatelessWidget {
+  final BackendType value;
+  final ValueChanged<BackendType> onChanged;
+
+  const _BackendDataSourceSelector({
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final border = isDark ? Colors.white12 : Colors.black12;
+    final bg = isDark
+        ? Colors.white.withAlpha((0.04 * 255).toInt())
+        : Colors.black.withAlpha((0.03 * 255).toInt());
+
+    Widget option(BackendType type) {
+      final selected = value == type;
+      return Expanded(
+        child: InkWell(
+          onTap: () => onChanged(type),
+          borderRadius: BorderRadius.circular(12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            decoration: BoxDecoration(
+              color: selected
+                  ? theme.colorScheme.primary.withAlpha((0.12 * 255).toInt())
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: selected
+                    ? theme.colorScheme.primary.withAlpha((0.40 * 255).toInt())
+                    : Colors.transparent,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  type.label,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  type.description,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: isDark
+                        ? Colors.white.withAlpha((0.72 * 255).toInt())
+                        : Colors.black.withAlpha((0.62 * 255).toInt()),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Origen de datos para tu cuenta',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              option(BackendType.firebase),
+              const SizedBox(width: 8),
+              option(BackendType.externalApi),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

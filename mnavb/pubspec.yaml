@@ -58,6 +58,9 @@ dependencies:
   # Para manejar permisos
   permission_handler: ^11.3.1
   font_awesome_flutter: ^10.10.0
+  http: ^1.5.0
+  native_overlay_bridge:
+    path: plugins/native_overlay_bridge
 
 dev_dependencies:
   flutter_test:

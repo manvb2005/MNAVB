@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../app/app_routes.dart';
 import '../utils/theme_switch.dart';
 import '../viewmodels/remember_session_provider.dart';
 import '../viewmodels/login_viewmodel.dart';
+import '../models/backend_type.dart';
 import '../utils/auth_background.dart';
 import '../widgets/loader_overlay.dart';
 import '../services/firebase_service.dart';
+import '../services/native_overlay_service.dart';
 import '../utils/notification_permission_helper.dart';
 
 // ...existing code...
@@ -191,6 +194,11 @@ class _LoginViewState extends State<LoginView> {
                                                           );
                                                       if (!mounted) return;
                                                       if (ok) {
+                                                        BackendType
+                                                        backendType =
+                                                            BackendType
+                                                                .firebase;
+
                                                         // Guardar credenciales si está activado "Recordar sesión"
                                                         if (remember.remember) {
                                                           await remember
@@ -211,9 +219,20 @@ class _LoginViewState extends State<LoginView> {
                                                             firebaseService
                                                                 .currentUserId;
                                                         if (userId != null) {
+                                                          backendType =
+                                                              await firebaseService
+                                                                  .getBackendTypeForUser(
+                                                                    userId,
+                                                                  );
                                                           await remember
                                                               .saveUserId(
                                                                 userId,
+                                                              );
+                                                          await remember
+                                                              .saveBackendTypeForUser(
+                                                                userId,
+                                                                backendType
+                                                                    .storageValue,
                                                               );
                                                         }
 
@@ -224,10 +243,26 @@ class _LoginViewState extends State<LoginView> {
                                                           );
                                                         }
 
+                                                        if (backendType ==
+                                                            BackendType
+                                                                .externalApi) {
+                                                          final canOverlay =
+                                                              await NativeOverlayService.canDrawOverlays();
+                                                          if (!canOverlay) {
+                                                            await NativeOverlayService.requestPermission();
+                                                          }
+                                                        }
+
                                                         if (mounted) {
                                                           Navigator.pushReplacementNamed(
                                                             context,
-                                                            '/home',
+                                                            backendType ==
+                                                                    BackendType
+                                                                        .externalApi
+                                                                ? AppRoutes
+                                                                      .externalApiHome
+                                                                : AppRoutes
+                                                                      .home,
                                                           );
                                                         }
                                                       } else if (loginVM
@@ -273,7 +308,7 @@ class _LoginViewState extends State<LoginView> {
                                                 onTap: () {
                                                   Navigator.pushReplacementNamed(
                                                     context,
-                                                    '/register',
+                                                    AppRoutes.register,
                                                   );
                                                 },
                                                 child: const Text(

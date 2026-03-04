@@ -10,7 +10,7 @@ class LoaderOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        if (child != null) child!,
+        if (child case final currentChild?) currentChild,
         if (show)
           Positioned.fill(
             child: Container(
