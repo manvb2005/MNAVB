@@ -4,7 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/app_monitoring_service.dart';
 
 class RememberSessionProvider extends ChangeNotifier {
-  static const _defaultExternalApiBaseUrl = 'https://mnavb.free.beeceptor.com';
+  static const _defaultExternalApiBaseUrl =
+      'http://52.6.118.38/sicuba/public';
   bool _remember = false;
   String _email = '';
   String _password = '';
@@ -60,13 +61,7 @@ class RememberSessionProvider extends ChangeNotifier {
     await prefs.setString('saved_backend_type', backendType);
 
     if (backendType == 'external_api') {
-      final current = prefs.getString('external_api_base_url')?.trim() ?? '';
-      if (current.isEmpty) {
-        await prefs.setString(
-          'external_api_base_url',
-          _defaultExternalApiBaseUrl,
-        );
-      }
+      await prefs.setString('external_api_base_url', _defaultExternalApiBaseUrl);
     }
 
     AppMonitoringService.instance.logInfo(

@@ -83,6 +83,59 @@ class VoucherProcessingService {
     }
   }
 
+  /// Procesamiento simplificado para usuarios de API externa.
+  /// Solo requiere monto, fecha/hora y descripcion opcional.
+  Future<ExternalApiVoucherProcessResult> processSharedUriForExternalApi(
+    String uriString,
+  ) async {
+    try {
+      String filePath;
+
+      if (uriString.startsWith('file://')) {
+        final uri = Uri.parse(uriString);
+        filePath = uri.toFilePath();
+      } else {
+        filePath = uriString;
+      }
+
+      print('📁 Ruta del archivo: $filePath');
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw Exception('El archivo del voucher no existe: $filePath');
+      }
+
+      print('✅ Archivo verificado: ${await file.length()} bytes');
+
+      final inputImage = InputImage.fromFilePath(filePath);
+      final recognizedText = await _textRecognizer.processImage(inputImage);
+      final texto = recognizedText.text;
+
+      print('=== TEXTO EXTRAÍDO DEL VOUCHER ===');
+      print(texto);
+      print('===================================');
+
+      final monto = _extraerMonto(texto);
+      if (monto == null || monto <= 0) {
+        throw Exception(
+          'No se pudo leer el monto del voucher. Verifica que el importe (S/) sea legible.',
+        );
+      }
+
+      final fecha = _extraerFecha(texto) ?? DateTime.now();
+      final descripcion = _extraerDescripcion(texto) ?? '';
+
+      return ExternalApiVoucherProcessResult(
+        monto: monto,
+        fecha: fecha,
+        descripcion: descripcion,
+      );
+    } catch (e) {
+      print('Error procesando URI compartido (API externa): $e');
+      rethrow;
+    }
+  }
+
   /// Obtiene el logo del banco según el nombre
   String _obtenerLogoBanco(String banco) {
     switch (banco.toLowerCase()) {
@@ -277,22 +330,35 @@ class VoucherProcessingService {
 
   /// Extrae el monto del texto usando expresiones regulares
   double? _extraerMonto(String texto) {
+    final textoCorregido = texto
+        // Corrige OCR frecuente en Yape: SI/Sl/S|/S! -> S/
+        .replaceAll(RegExp(r'\bs[il|!]\s+(?=\d)', caseSensitive: false), 'S/ ')
+        .replaceAll(RegExp(r'\bs[il|!](?=\d)', caseSensitive: false), 'S/');
+
+    final candidatosTexto = <String>[textoCorregido, texto];
+
     // Patrones comunes: "S/ 50", "s/50", "50.00", etc
     final patterns = [
+      // Tolera errores OCR frecuentes de "S/": SI, Sl, S|, S!
+      RegExp(r's[\/|il!]?\s*(\d+(?:[.,]\d{1,2})?)', caseSensitive: false),
       RegExp(r's/?\s*(\d+(?:[.,]\d{2})?)', caseSensitive: false),
       RegExp(r'(\d+(?:[.,]\d{2})?)\s*soles?', caseSensitive: false),
       RegExp(r'monto[:\s]+s/?\s*(\d+(?:[.,]\d{2})?)', caseSensitive: false),
+      // Fallback para vouchers Yape cuando el símbolo de moneda se pierde
+      RegExp(r'yapeaste[\s\S]{0,60}?(\d+[.,]\d{1,2})', caseSensitive: false),
     ];
-    
-    for (var pattern in patterns) {
-      final match = pattern.firstMatch(texto);
-      if (match != null) {
-        final montoStr = match.group(1);
-        if (montoStr != null) {
-          final monto = _parseMonto(montoStr);
-          if (monto != null) {
-            print('Monto extraído: $monto');
-            return monto;
+
+    for (final fuente in candidatosTexto) {
+      for (var pattern in patterns) {
+        final match = pattern.firstMatch(fuente);
+        if (match != null) {
+          final montoStr = match.group(1);
+          if (montoStr != null) {
+            final monto = _parseMonto(montoStr);
+            if (monto != null) {
+              print('Monto extraído: $monto (raw: $montoStr)');
+              return monto;
+            }
           }
         }
       }
@@ -433,7 +499,7 @@ class VoucherProcessingService {
     if (indiceFecha >= 0 && indiceCodigo >= 0 && indiceCodigo > indiceFecha + 1) {
       // Buscar la primera línea válida después de la fecha y antes del código
       for (int j = indiceFecha + 1; j < indiceCodigo; j++) {
-        final candidato = lineas[j].trim();
+        final candidato = _limpiarDescripcionCandidata(lineas[j]);
         final candidatoLower = candidato.toLowerCase();
         
         // Ignorar líneas que sean solo números, asteriscos o información técnica
@@ -462,7 +528,8 @@ class VoucherProcessingService {
     for (var pattern in patterns) {
       final match = pattern.firstMatch(texto);
       if (match != null) {
-        final desc = match.group(1)?.trim();
+        final descRaw = match.group(1)?.trim();
+        final desc = descRaw == null ? null : _limpiarDescripcionCandidata(descRaw);
         if (desc != null && desc.isNotEmpty) {
           print('📝 Descripción extraída (patrón): "$desc"');
           return desc;
@@ -514,6 +581,28 @@ class VoucherProcessingService {
     if (t.contains('detalle') || t.contains('sucursal')) return true;
     if (t.contains('tipo de operación') || t.contains('tipo de operacion')) return true;
     return false;
+  }
+
+  String _limpiarDescripcionCandidata(String texto) {
+    var limpio = texto.trim();
+
+    // Quita prefijo de icono OCR (ej: "B Con descripción QA" -> "Con descripción QA")
+    for (var i = 0; i < 2; i++) {
+      final partes = limpio.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+      if (partes.length < 2) break;
+
+      final primero = partes.first;
+      final resto = partes.sublist(1).join(' ');
+      final restoNorm = _normalizarTextoOcr(resto);
+      if (primero.length <= 3 && restoNorm.startsWith('con descripcion')) {
+        limpio = resto;
+        continue;
+      }
+      break;
+    }
+
+    limpio = limpio.replaceAll(RegExp(r'^[-•:]+\s*'), '');
+    return limpio.trim();
   }
 
   String _normalizarTextoOcr(String texto) {
@@ -615,5 +704,17 @@ class VoucherProcessResult {
     required this.bancoLogo,
     required this.tipoCuenta,
     this.bancoId,
+  });
+}
+
+class ExternalApiVoucherProcessResult {
+  final double monto;
+  final DateTime fecha;
+  final String descripcion;
+
+  ExternalApiVoucherProcessResult({
+    required this.monto,
+    required this.fecha,
+    required this.descripcion,
   });
 }

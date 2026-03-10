@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,8 +31,10 @@ class ExternalApiCategoria {
 }
 
 class ExternalApiVoucherService {
-  static const _defaultBaseUrl = 'https://mnavb.free.beeceptor.com';
-  static const _legacyBaseUrl = 'https://mnavb.beeceptor.com';
+  static const _defaultBaseUrl = 'http://52.6.118.38/sicuba/public';
+  static const _defaultApiKey = 'MI_API_KEY_123';
+  static const _defaultChannel = 'mobile';
+  static const _txtOperationId = 801;
 
   final http.Client _client;
 
@@ -39,36 +42,7 @@ class ExternalApiVoucherService {
     : _client = client ?? http.Client();
 
   Future<List<String>> _candidateBaseUrls() async {
-    final prefs = await SharedPreferences.getInstance();
-    final configuredRaw = prefs.getString('external_api_base_url')?.trim();
-
-    final urls = <String>[];
-    if (configuredRaw != null && configuredRaw.isNotEmpty) {
-      final withScheme =
-          configuredRaw.startsWith('http://') ||
-              configuredRaw.startsWith('https://')
-          ? configuredRaw
-          : 'https://$configuredRaw';
-
-      try {
-        final parsed = Uri.parse(withScheme);
-        if (parsed.hasAuthority) {
-          urls.add(parsed.origin);
-        }
-      } catch (_) {
-        urls.add(withScheme);
-      }
-    }
-
-    if (!urls.contains(_defaultBaseUrl)) {
-      urls.add(_defaultBaseUrl);
-    }
-
-    if (!urls.contains(_legacyBaseUrl)) {
-      urls.add(_legacyBaseUrl);
-    }
-
-    return urls;
+    return const [_defaultBaseUrl];
   }
 
   Uri _uri(String base, String path) {
@@ -79,14 +53,41 @@ class ExternalApiVoucherService {
     return Uri.parse('$normalized$finalPath');
   }
 
+  Future<Map<String, String>> _defaultGetHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final configuredApiKey = prefs.getString('external_api_key')?.trim();
+    final configuredChannel = prefs.getString('external_api_channel')?.trim();
+
+    return {
+      'Accept': 'application/json',
+      'X-API-KEY':
+          configuredApiKey == null || configuredApiKey.isEmpty
+          ? _defaultApiKey
+          : configuredApiKey,
+      'Channel':
+          configuredChannel == null || configuredChannel.isEmpty
+          ? _defaultChannel
+          : configuredChannel,
+    };
+  }
+
+  Future<Map<String, String>> _defaultJsonHeaders() async {
+    final headers = await _defaultGetHeaders();
+    return {
+      ...headers,
+      'Content-Type': 'application/json',
+    };
+  }
+
   Future<http.Response> _get(String path) async {
     final urls = await _candidateBaseUrls();
+    final headers = await _defaultGetHeaders();
     Object? lastError;
     for (final base in urls) {
       for (var attempt = 0; attempt < 2; attempt++) {
         try {
           return await _client
-              .get(_uri(base, path))
+              .get(_uri(base, path), headers: headers)
               .timeout(const Duration(seconds: 15));
         } catch (e) {
           lastError = e;
@@ -97,9 +98,7 @@ class ExternalApiVoucherService {
       }
     }
 
-    throw Exception(
-      'No se pudo conectar con la API externa. Verifica internet y URL ($lastError)',
-    );
+    throw Exception(_networkErrorMessage(lastError, 'consultar la API'));
   }
 
   Future<http.Response> _post(
@@ -124,15 +123,15 @@ class ExternalApiVoucherService {
       }
     }
 
-    throw Exception(
-      'No se pudo conectar con la API externa. Verifica internet y URL ($lastError)',
-    );
+    throw Exception(_networkErrorMessage(lastError, 'enviar el voucher'));
   }
 
   Future<ExternalApiBalance> getBalance() async {
     final response = await _get('/balance');
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Error consultando balance (${response.statusCode})');
+      throw Exception(
+        _httpErrorMessage(response, action: 'consultar el balance'),
+      );
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -142,34 +141,46 @@ class ExternalApiVoucherService {
   }
 
   Future<List<ExternalApiCategoria>> getCategorias() async {
-    final response = await _get('/categorias');
+    final response = await _get('/api/v1/masters');
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Error consultando categorias (${response.statusCode})');
+      throw Exception(
+        _httpErrorMessage(response, action: 'consultar categorias'),
+      );
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final categoriasRaw = (body['categorias'] as List?) ?? const [];
+    final allItems = ((body['data'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
 
-    return categoriasRaw
-        .map((e) {
-          final map = e as Map<String, dynamic>;
-          final subs = (map['subcategorias'] as List?) ?? const [];
+    return allItems
+        .map((map) {
+          final id = (map['id_master'] as String?)?.trim() ?? '';
+          final nombre = (map['master_name'] as String?)?.trim() ?? '';
+          final masterCode = (map['master_code'] as String?)?.trim() ?? '';
+          final masterType = (map['master_type'] as String?)?.trim() ?? '';
+
+          if (id.isEmpty || masterCode != '0' || masterType.toLowerCase() != 'expense') {
+            return null;
+          }
+
+          final subcategorias = allItems
+              .where((item) => ((item['master_code'] as String?)?.trim() ?? '') == id)
+              .map((item) {
+                final subId = (item['id_master'] as String?)?.trim() ?? '';
+                final subNombre = (item['master_name'] as String?)?.trim() ?? '';
+                return ExternalApiSubcategoria(id: subId, nombre: subNombre);
+              })
+              .where((s) => s.id.isNotEmpty)
+              .toList();
+
           return ExternalApiCategoria(
-            id: (map['id'] as String?) ?? '',
-            nombre: (map['nombre'] as String?) ?? '',
-            subcategorias: subs
-                .map((s) {
-                  final sm = s as Map<String, dynamic>;
-                  return ExternalApiSubcategoria(
-                    id: (sm['id'] as String?) ?? '',
-                    nombre: (sm['nombre'] as String?) ?? '',
-                  );
-                })
-                .where((s) => s.id.isNotEmpty)
-                .toList(),
+            id: id,
+            nombre: nombre,
+            subcategorias: subcategorias,
           );
         })
-        .where((c) => c.id.isNotEmpty)
+        .whereType<ExternalApiCategoria>()
         .toList();
   }
 
@@ -181,28 +192,86 @@ class ExternalApiVoucherService {
     required DateTime fecha,
     String moneda = 'PEN',
   }) async {
+    final categoria = int.tryParse(categoriaPrincipalId) ?? categoriaPrincipalId;
+    final subcategoria = int.tryParse(subcategoriaId) ?? subcategoriaId;
+
     final response = await _post(
-      '/voucher/gasto',
-      headers: const {'Content-Type': 'application/json'},
+      '/api/v1/detail',
+      headers: await _defaultJsonHeaders(),
       body: jsonEncode({
-        'monto': monto,
-        'categoriaPrincipalId': categoriaPrincipalId,
-        'subcategoriaId': subcategoriaId,
-        'descripcion': descripcion,
-        'moneda': moneda,
-        'fecha': _asDateOnly(fecha),
+        'txtOperationId': _txtOperationId,
+        'tblDetail': [
+          {
+            'category': categoria,
+            'subCategory': subcategoria,
+            'desc': descripcion.trim(),
+            'amount': monto,
+          },
+        ],
       }),
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Error enviando voucher gasto (${response.statusCode})');
+      throw Exception(
+        _httpErrorMessage(response, action: 'enviar el voucher'),
+      );
     }
   }
 
-  String _asDateOnly(DateTime date) {
-    final y = date.year.toString().padLeft(4, '0');
-    final m = date.month.toString().padLeft(2, '0');
-    final d = date.day.toString().padLeft(2, '0');
-    return '$y-$m-$d';
+  String _networkErrorMessage(Object? error, String action) {
+    if (error is SocketException) {
+      return 'No se pudo conectar con la API. Verifica internet y el servidor.';
+    }
+    if (error is HttpException) {
+      return 'Hubo un problema de red al $action. Intenta nuevamente.';
+    }
+    if (error is HandshakeException) {
+      return 'Fallo de seguridad SSL/TLS al conectar con la API.';
+    }
+    return 'No se pudo $action por un problema de conexion.';
   }
+
+  String _httpErrorMessage(http.Response response, {required String action}) {
+    final statusCode = response.statusCode;
+    final apiMessage = _extractApiMessage(response.body);
+    switch (statusCode) {
+      case 400:
+        return apiMessage ?? 'Solicitud invalida al $action.';
+      case 401:
+        return apiMessage ??
+            'La API rechazo la autenticacion (401). Verifica API Key y Channel.';
+      case 403:
+        return apiMessage ?? 'No tienes permisos para esta operacion (403).';
+      case 404:
+        return apiMessage ?? 'No se encontro el endpoint solicitado (404).';
+      case 408:
+        return 'Tiempo de espera agotado al $action.';
+      case 422:
+        return apiMessage ?? 'Datos invalidos para $action (422).';
+      case 429:
+        return apiMessage ?? 'Demasiadas solicitudes. Intenta en unos segundos.';
+      default:
+        if (statusCode >= 500) {
+          return apiMessage ??
+              'La API esta con problemas internos ($statusCode). Intenta mas tarde.';
+        }
+        return apiMessage ?? 'Error HTTP $statusCode al $action.';
+    }
+  }
+
+  String? _extractApiMessage(String rawBody) {
+    try {
+      final decoded = jsonDecode(rawBody);
+      if (decoded is Map<String, dynamic>) {
+        final message = (decoded['message'] as String?)?.trim();
+        if (message != null && message.isNotEmpty) {
+          return message;
+        }
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
 }

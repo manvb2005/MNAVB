@@ -34,7 +34,7 @@ class PendingExternalVoucher {
     return PendingExternalVoucher(
       notificationId: (map['notificationId'] as num?)?.toInt() ?? 9999,
       monto: (map['monto'] as num?)?.toDouble() ?? 0,
-      descripcion: (map['descripcion'] as String?) ?? 'Sin descripcion',
+      descripcion: (map['descripcion'] as String?) ?? '',
       fecha:
           DateTime.tryParse((map['fecha'] as String?) ?? '') ?? DateTime.now(),
       moneda: (map['moneda'] as String?) ?? 'PEN',

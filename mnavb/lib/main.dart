@@ -99,15 +99,6 @@ void callbackDispatcher() {
         tag: 'WORKER',
       );
 
-      // Procesar el voucher con OCR
-      final voucherService = VoucherProcessingService();
-      final result = await voucherService.processSharedUri(uri);
-
-      AppMonitoringService.instance.logInfo(
-        'Voucher procesado: ${result.tipo} - ${formatMoney(result.monto)}',
-        tag: 'WORKER',
-      );
-
       // Obtener UID del usuario desde SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       final userId = prefs.getString('saved_uid');
@@ -120,13 +111,15 @@ void callbackDispatcher() {
         userId,
       );
 
+      final voucherService = VoucherProcessingService();
+
       if (backendType == BackendType.externalApi) {
-        if (result.tipo != 'gasto' ||
-            result.bancoNombre.toLowerCase() != 'yape') {
-          throw Exception(
-            'API externa solo soporta Yapeaste (gasto) por ahora.',
-          );
-        }
+        final result = await voucherService.processSharedUriForExternalApi(uri);
+
+        AppMonitoringService.instance.logInfo(
+          'Voucher API externa procesado: ${formatMoney(result.monto)}',
+          tag: 'WORKER',
+        );
 
         final pendingService = PendingExternalVoucherService();
         await pendingService.save(
@@ -136,7 +129,7 @@ void callbackDispatcher() {
             descripcion: result.descripcion,
             fecha: result.fecha,
             moneda: 'PEN',
-            bancoNombre: result.bancoNombre,
+            bancoNombre: 'Voucher',
           ),
         );
 
@@ -149,6 +142,14 @@ void callbackDispatcher() {
 
         return Future.value(true);
       }
+
+      // Flujo completo (gasto/ingreso/banco) solo para usuarios Firebase
+      final result = await voucherService.processSharedUri(uri);
+
+      AppMonitoringService.instance.logInfo(
+        'Voucher procesado: ${result.tipo} - ${formatMoney(result.monto)}',
+        tag: 'WORKER',
+      );
 
       final backend = await FinanceBackendResolver.resolveForUser(userId);
       final bancoId = await backend.findOrCreateBank(
@@ -222,34 +223,34 @@ void callbackDispatcher() {
 }
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await AppMonitoringService.instance.init();
-
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    unawaited(
-      AppMonitoringService.instance.logError(
-        'FlutterError no manejado',
-        tag: 'FLUTTER',
-        error: details.exception,
-        stackTrace: details.stack,
-      ),
-    );
-  };
-
-  PlatformDispatcher.instance.onError = (error, stack) {
-    unawaited(
-      AppMonitoringService.instance.logError(
-        'Error de plataforma no manejado',
-        tag: 'PLATFORM',
-        error: error,
-        stackTrace: stack,
-      ),
-    );
-    return true;
-  };
-
   await runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await AppMonitoringService.instance.init();
+
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      unawaited(
+        AppMonitoringService.instance.logError(
+          'FlutterError no manejado',
+          tag: 'FLUTTER',
+          error: details.exception,
+          stackTrace: details.stack,
+        ),
+      );
+    };
+
+    PlatformDispatcher.instance.onError = (error, stack) {
+      unawaited(
+        AppMonitoringService.instance.logError(
+          'Error de plataforma no manejado',
+          tag: 'PLATFORM',
+          error: error,
+          stackTrace: stack,
+        ),
+      );
+      return true;
+    };
+
     // Inicializar canal de share lo antes posible para evitar perder intents
     await ShareEnqueueService.init();
 

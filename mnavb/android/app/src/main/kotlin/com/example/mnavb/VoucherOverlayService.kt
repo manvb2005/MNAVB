@@ -6,12 +6,12 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
-import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -29,11 +29,20 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.net.ConnectException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.net.URL
 import kotlin.concurrent.thread
 
 class VoucherOverlayService : Service() {
+    private val tag = "VoucherOverlayService"
+    private val apiBaseUrl = "http://52.6.118.38/sicuba/public"
+    private val apiKey = "MI_API_KEY_123"
+    private val apiChannel = "mobile"
+    private val txtOperationId = 801
+
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
 
@@ -112,7 +121,10 @@ class VoucherOverlayService : Service() {
         val data = pending ?: return
         amountView.text = "Monto: ${data.moneda} ${"%.2f".format(data.monto)}"
         dateView.text = "Fecha: ${data.fecha}"
-        descriptionEdit.setText(if (data.descripcion == "Sin descripción") "" else data.descripcion)
+        val descripcionInicial = data.descripcion.trim()
+        val esPlaceholderDescripcion = descripcionInicial.equals("Sin descripcion", ignoreCase = true) ||
+            descripcionInicial.equals("Sin descripción", ignoreCase = true)
+        descriptionEdit.setText(if (esPlaceholderDescripcion) "" else descripcionInicial)
 
         closeBtn.setOnClickListener { stopSelf() }
         sendBtn.isEnabled = false
@@ -121,7 +133,7 @@ class VoucherOverlayService : Service() {
             onSuccess = { list ->
                 categorias = list
                 if (categorias.isEmpty()) {
-                    toast("La API no devolvio categorias")
+                    toast("No hay categorias principales disponibles en la API")
                     return@loadCategorias
                 }
 
@@ -163,7 +175,7 @@ class VoucherOverlayService : Service() {
                     }
 
                     val descripcion = descriptionEdit.text?.toString()?.trim().orEmpty().ifEmpty {
-                        if (data.descripcion == "Sin descripción") "Sin descripcion" else data.descripcion
+                        if (esPlaceholderDescripcion) "" else data.descripcion.trim()
                     }
 
                     sendBtn.isEnabled = false
@@ -204,28 +216,46 @@ class VoucherOverlayService : Service() {
     private fun loadCategorias(onSuccess: (List<Categoria>) -> Unit, onError: (String) -> Unit) {
         thread {
             try {
-                val body = getFromApi("/categorias")
+                Log.i(tag, "GET categorias -> $apiBaseUrl/api/v1/masters")
+                val body = getFromApi("/api/v1/masters")
+                Log.i(tag, "GET categorias body (primeros 300): ${body.take(300)}")
                 val root = JSONObject(body)
-                val arr = root.optJSONArray("categorias") ?: JSONArray()
+                val arr = root.optJSONArray("data") ?: JSONArray()
                 val result = mutableListOf<Categoria>()
+
+                val allItems = mutableListOf<JSONObject>()
                 for (i in 0 until arr.length()) {
                     val c = arr.optJSONObject(i) ?: continue
-                    val id = c.optString("id")
-                    val nombre = c.optString("nombre")
-                    val subsArr = c.optJSONArray("subcategorias") ?: JSONArray()
+                    allItems.add(c)
+                }
+
+                for (c in allItems) {
+                    val id = c.optString("id_master").trim()
+                    val nombre = c.optString("master_name").trim()
+                    val masterCode = c.optString("master_code").trim()
+                    val masterType = c.optString("master_type").trim().lowercase()
+
+                    if (id.isBlank()) continue
+                    if (masterCode != "0") continue
+                    if (masterType != "expense") continue
+
                     val subs = mutableListOf<Subcategoria>()
-                    for (j in 0 until subsArr.length()) {
-                        val s = subsArr.optJSONObject(j) ?: continue
-                        val sid = s.optString("id")
-                        val sn = s.optString("nombre")
+                    for (s in allItems) {
+                        val sid = s.optString("id_master").trim()
+                        val sn = s.optString("master_name").trim()
+                        val scode = s.optString("master_code").trim()
+                        if (scode != id) continue
                         if (sid.isNotBlank()) subs.add(Subcategoria(sid, sn))
                     }
+
                     if (id.isNotBlank()) result.add(Categoria(id, nombre, subs))
                 }
+                Log.i(tag, "Categorias padre filtradas: ${result.size}")
                 Handler(Looper.getMainLooper()).post { onSuccess(result) }
             } catch (e: Exception) {
+                Log.e(tag, "Error cargando categorias", e)
                 Handler(Looper.getMainLooper()).post {
-                    onError("No se pudo cargar categorias: ${e.message}")
+                    onError(resolveUserMessage(e, "consultar categorias"))
                 }
             }
         }
@@ -242,19 +272,23 @@ class VoucherOverlayService : Service() {
         thread {
             try {
                 val payload = JSONObject().apply {
-                    put("monto", pending.monto)
-                    put("categoriaPrincipalId", categoriaPrincipalId)
-                    put("subcategoriaId", subcategoriaId)
-                    put("descripcion", descripcion)
-                    put("moneda", pending.moneda)
-                    put("fecha", pending.fecha.take(10))
+                    put("txtOperationId", txtOperationId)
+                    put("tblDetail", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("category", categoriaPrincipalId.toIntOrNull() ?: categoriaPrincipalId)
+                            put("subCategory", subcategoriaId.toIntOrNull() ?: subcategoriaId)
+                            put("desc", descripcion)
+                            put("amount", pending.monto)
+                        })
+                    })
                 }
 
-                postToApi("/voucher/gasto", payload.toString())
+                postToApi("/api/v1/detail", payload.toString())
                 Handler(Looper.getMainLooper()).post(onSuccess)
             } catch (e: Exception) {
+                Log.e(tag, "Error enviando voucher", e)
                 Handler(Looper.getMainLooper()).post {
-                    onError("Error enviando voucher: ${e.message}")
+                    onError(resolveUserMessage(e, "enviar el voucher"))
                 }
             }
         }
@@ -266,23 +300,31 @@ class VoucherOverlayService : Service() {
         for (base in urls) {
             repeat(2) { attempt ->
                 try {
+                    Log.i(tag, "Intento GET ${attempt + 1} -> $base$path")
                     val conn = URL(base + path).openConnection() as HttpURLConnection
                     conn.requestMethod = "GET"
                     conn.connectTimeout = 15000
                     conn.readTimeout = 15000
+                    conn.setRequestProperty("Accept", "application/json")
+                    conn.setRequestProperty("X-API-KEY", apiKey)
+                    conn.setRequestProperty("Channel", apiChannel)
                     conn.connect()
                     val code = conn.responseCode
                     val stream = if (code in 200..299) conn.inputStream else conn.errorStream
                     val body = BufferedReader(InputStreamReader(stream)).use { it.readText() }
-                    if (code !in 200..299) throw Exception("HTTP $code")
+                    Log.i(tag, "GET $base$path -> HTTP $code")
+                    if (code !in 200..299) {
+                        throw ApiUserException(httpErrorMessage(code, body, "consultar categorias"))
+                    }
                     return body
                 } catch (e: Exception) {
                     lastError = e
+                    Log.e(tag, "Fallo GET $base$path (intento ${attempt + 1})", e)
                     if (attempt == 0) Thread.sleep(600)
                 }
             }
         }
-        throw lastError ?: Exception("Error de conexion")
+        throw ApiUserException(resolveNetworkMessage(lastError, "consultar categorias"), lastError)
     }
 
     private fun postToApi(path: String, jsonBody: String): String {
@@ -296,51 +338,72 @@ class VoucherOverlayService : Service() {
                     conn.connectTimeout = 15000
                     conn.readTimeout = 15000
                     conn.doOutput = true
+                    conn.setRequestProperty("Accept", "application/json")
+                    conn.setRequestProperty("X-API-KEY", apiKey)
+                    conn.setRequestProperty("Channel", apiChannel)
                     conn.setRequestProperty("Content-Type", "application/json")
                     OutputStreamWriter(conn.outputStream).use { it.write(jsonBody) }
                     val code = conn.responseCode
                     val stream = if (code in 200..299) conn.inputStream else conn.errorStream
                     val body = BufferedReader(InputStreamReader(stream)).use { it.readText() }
-                    if (code !in 200..299) throw Exception("HTTP $code")
+                    Log.i(tag, "POST $base$path -> HTTP $code")
+                    if (code !in 200..299) {
+                        throw ApiUserException(httpErrorMessage(code, body, "enviar el voucher"))
+                    }
                     return body
                 } catch (e: Exception) {
                     lastError = e
+                    Log.e(tag, "Fallo POST $base$path (intento ${attempt + 1})", e)
                     if (attempt == 0) Thread.sleep(600)
                 }
             }
         }
-        throw lastError ?: Exception("Error de conexion")
+        throw ApiUserException(resolveNetworkMessage(lastError, "enviar el voucher"), lastError)
     }
 
     private fun candidateBaseUrls(): List<String> {
-        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        val configured = prefs.getString("flutter.external_api_base_url", "")?.trim().orEmpty()
-        val result = mutableListOf<String>()
+        return listOf(apiBaseUrl)
+    }
 
-        if (configured.isNotEmpty()) {
-            val withScheme = if (configured.startsWith("http://") || configured.startsWith("https://")) {
-                configured
-            } else {
-                "https://$configured"
+    private fun resolveUserMessage(error: Exception, action: String): String {
+        if (error is ApiUserException) return error.userMessage
+        return "No se pudo $action. Intenta nuevamente."
+    }
+
+    private fun resolveNetworkMessage(error: Exception?, action: String): String {
+        return when (error) {
+            is SocketTimeoutException -> "Tiempo de espera agotado al $action. Revisa tu conexion e intenta nuevamente."
+            is UnknownHostException, is ConnectException -> "No se pudo conectar con la API. Verifica internet o la URL del servidor."
+            else -> "No se pudo $action por un problema de conexion."
+        }
+    }
+
+    private fun httpErrorMessage(statusCode: Int, body: String, action: String): String {
+        val apiMessage = extractApiMessage(body)
+        return when (statusCode) {
+            400 -> apiMessage ?: "Solicitud invalida al $action."
+            401 -> apiMessage ?: "La API rechazo la autenticacion (401). Verifica API Key y Channel."
+            403 -> apiMessage ?: "No tienes permisos para esta operacion (403)."
+            404 -> apiMessage ?: "No se encontro el endpoint solicitado (404)."
+            408 -> "Tiempo de espera agotado al $action."
+            422 -> apiMessage ?: "Datos invalidos para $action (422)."
+            429 -> apiMessage ?: "Demasiadas solicitudes. Intenta en unos segundos."
+            in 500..599 -> apiMessage ?: "La API esta con problemas internos ($statusCode). Intenta mas tarde."
+            else -> apiMessage ?: "Error HTTP $statusCode al $action."
+        }
+    }
+
+    private fun extractApiMessage(body: String): String? {
+        return try {
+            val json = JSONObject(body)
+            val message = json.optString("message").trim()
+            when {
+                message.isNotEmpty() -> message
+                else -> null
             }
-
-            try {
-                val uri = Uri.parse(withScheme)
-                val origin = uri.scheme + "://" + uri.authority
-                if (origin.contains("//")) result.add(origin)
-            } catch (_: Exception) {
-                result.add(withScheme)
-            }
+        } catch (_: Exception) {
+            null
         }
-
-        if (!result.contains("https://mnavb.free.beeceptor.com")) {
-            result.add("https://mnavb.free.beeceptor.com")
-        }
-        if (!result.contains("https://mnavb.beeceptor.com")) {
-            result.add("https://mnavb.beeceptor.com")
-        }
-
-        return result
     }
 
     private fun readPendingVoucher(): PendingVoucher? {
@@ -417,4 +480,9 @@ class VoucherOverlayService : Service() {
         val id: String,
         val nombre: String
     )
+
+    private class ApiUserException(
+        val userMessage: String,
+        cause: Throwable? = null
+    ) : Exception(userMessage, cause)
 }

@@ -8,7 +8,8 @@ import 'firebase_finance_backend.dart';
 
 class FinanceBackendResolver {
   static const _savedBackendType = 'saved_backend_type';
-  static const _defaultExternalApiBaseUrl = 'https://mnavb.free.beeceptor.com';
+  static const _defaultExternalApiBaseUrl =
+      'http://52.6.118.38/sicuba/public';
 
   static Future<void> cacheBackendType({
     required String userId,
@@ -42,9 +43,7 @@ class FinanceBackendResolver {
     switch (backendType) {
       case BackendType.externalApi:
         final prefs = await SharedPreferences.getInstance();
-        final baseUrl =
-            prefs.getString('external_api_base_url')?.trim() ??
-            _defaultExternalApiBaseUrl;
+        final baseUrl = _defaultExternalApiBaseUrl;
         final token =
             prefs.getString('external_api_token_$userId') ??
             prefs.getString('external_api_token');
